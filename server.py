@@ -1,15 +1,12 @@
 import socket
 
 def start_server():
-    # Create a TCP/IP socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     
-    # Bind the socket to a specific address and port
-    server_address = ('localhost', 65432)  # Replace 'localhost' with the server's IP address if needed
+    server_address = ('localhost', 65432)  
     print(f"Starting server on {server_address[0]}:{server_address[1]}")
     server_socket.bind(server_address)
     
-    # Listen for incoming connections (1 = backlog, the number of connections that can wait)
     server_socket.listen(1)
     
     while True:
@@ -19,7 +16,6 @@ def start_server():
         try:
             print(f"Connection established with {client_address}")
             
-            # Receive data in small chunks and send it back
             while True:
                 data = connection.recv(1024)
                 if data:
