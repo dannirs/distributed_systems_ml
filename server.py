@@ -2,7 +2,16 @@ import socket
 import threading
 import os
 
-# what to do if a file of the same name has already been saved by the server?
+# what to do if a file of the same name has already been saved by the server? - don't have to worry about it right now
+# why are logs not showing up in docker? - there are other ways
+# to use docker; can use interactive mode command, docker desktop,
+# or docker shell command from the client to the docker container and the output
+# is returned on the client side
+# should the files being sent to server be stored in docker instead of on my ide? - currently save all data
+# in a directory. when running docker, can use flag to make it interactive and see what's in the docker container's
+# file system
+# docker fq -it container_name sh -c command_name
+# need to restructure the code so that the responses sent by the server also take the form of methods
 
 file_store = {}
 
