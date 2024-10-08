@@ -1,45 +1,71 @@
 import socket
 import os
 import threading
+from message import message
+import json
 
 def send_file(file_name, client_socket):
-    client_socket.send(b'post')
-    file_name_bytes = file_name.encode('utf-8')
+    file_name_bytes = file_name
     file_name_size = len(file_name_bytes)
-    client_socket.send(file_name_size.to_bytes(4, 'big')) 
-    client_socket.send(file_name_bytes)
-    print("Client is sending file to server: ", file_name)
     file_size = os.path.getsize(file_name)
-    client_socket.send(file_size.to_bytes(8, 'big'))
-    with open(file_name, 'rb') as f:
-        while True:
-            file_data = f.read(1024)
-            if not file_data:
-                break
-            client_socket.send(file_data)
-    f.close()
+    packet = message(
+        method="SEND_FILE", 
+        source_port=1234, 
+        destination_port=5678, 
+        header_list={"file_name_size": file_name_size, "file_name_bytes": file_name_bytes, "file_size": file_size}, 
+        file=file_name
+    )
+    headers, payload = packet.process_request()
+    client_socket.send(headers)
+    for i in range(len(payload)):
+        client_socket.send(payload[i])
     print("File sent.")
 
 def get_file(file_name, client_socket):
-    client_socket.send(b'get')
-
-    file_name_bytes = file_name.encode('utf-8')
+    file_name_bytes = file_name
     file_name_size = len(file_name_bytes)
-    client_socket.send(file_name_size.to_bytes(4, 'big'))  
-    client_socket.send(file_name_bytes)
-    print("Client is getting file from server: ", file_name)
-    file_size = int.from_bytes(client_socket.recv(8), 'big')
+    packet = message(
+        method="GET_FILE", 
+        source_port=1234, 
+        destination_port=5678, 
+        header_list={"file_name_size": file_name_size, "file_name_bytes": file_name_bytes}
+    )
+    headers = packet.process_request()
+    client_socket.send(headers)
+    print(f"Requesting file from server: {file_name}")
 
+    resp = wait_for_response(client_socket)
+    file_size = resp['header']['file_size']
+    print(resp)
+    print(file_size)
     bytes_received = 0
     with open(f'downloaded_{file_name}', 'wb') as f:
         while bytes_received < file_size:
             file_data = client_socket.recv(1024)
             if not file_data:
                 break
-            f.write(file_data)
+            file_data_json = json.loads(file_data)
+            print(file_data_json['payload']['file_data'])
+            file_data_bytes = bytes.fromhex(file_data_json['payload']['file_data'])
+            f.write(file_data_bytes)
             bytes_received += len(file_data)
-    f.close()
     print("File retrieved.")
+
+def wait_for_response(client_socket):
+    while True:
+        headers = client_socket.recv(1024).decode() 
+        if not headers:
+            print("No data received. Closing connection.")
+            client_socket.close()  
+        try:
+            print(headers)
+            headers_json = json.loads(headers)  
+            print(headers_json)
+        except json.JSONDecodeError as e:
+            print(f"Failed to decode JSON: {e}")
+            break 
+        else:
+            return headers_json
 
 def start_client(file_name):
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -53,6 +79,8 @@ def start_client(file_name):
         response = client_socket.recv(1024)
         print(f"Server response: {response}")
         get_file(file_name, client_socket)
+        response = client_socket.recv(1024)
+        print(f"Server response: {response}")
 
     finally:
         print("Closing connection")
@@ -72,4 +100,5 @@ def test_multiple_clients():
     thread3.join()
 
 if __name__ == "__main__":
-    test_multiple_clients()
+    # test_multiple_clients()
+    start_client("username-password-recovery-code.csv")
