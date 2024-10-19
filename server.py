@@ -3,26 +3,26 @@ import os
 from message import message
 import json
 import threading
+from handlers import write_to_file
+
+# send a python file between client and server, and then send the data file for the python program over
+# use the rpc feature to call the python program to run and process that data file
+# client request: run_program(), arguments specifying the files to use
+# save the output in a separate file and return output to the client 
+# rpc --> program name, arguments, payload (adding something in the payload or just the headers to call the rpc)
+# can create a separate directory for generated program results
+# client request: should also add a way to send simple data, like a string or integer, and this shouldn't be stored in a file --> data 
+# should have a name and a value
+# it can be stored in memory/a cache on the server-side (ex. a dictionary)
+# create a manager to manage the whole process 
 
 file_store = {}  
 
 def handle_file_upload(client_socket, source_port, destination_port, headers_json):
-    file_name_size = headers_json["header"]["file_name_size"]
-    file_name = headers_json["header"]["file_name_bytes"]
+    file_name = headers_json["header"]["file_name"]
     file_size = headers_json["header"]["file_size"]
     file_path = f"server_files/{file_name}"
-
-    bytes_received = 0
-    with open(file_path, 'wb') as f:
-        while bytes_received < file_size:
-            file_data = client_socket.recv(1024)
-            if not file_data:
-                break
-            file_data_json = json.loads(file_data)
-            print(file_data_json['payload']['file_data'])
-            file_data_bytes = bytes.fromhex(file_data_json['payload']['file_data'])
-            f.write(file_data_bytes)
-            bytes_received += len(file_data_bytes)
+    write_to_file(client_socket, file_path, file_size)
 
     file_store[file_name] = file_path
     print(f"File '{file_name}' received and stored.")
@@ -36,8 +36,7 @@ def handle_file_upload(client_socket, source_port, destination_port, headers_jso
     client_socket.send(headers)
 
 def handle_file_retrieval(client_socket, source_port, destination_port, headers_json):
-    file_name_size = headers_json["header"]["file_name_size"]
-    file_name = headers_json["header"]["file_name_bytes"]
+    file_name = headers_json["header"]["file_name"]
 
     if file_name in file_store:
         file_path = file_store[file_name]
@@ -50,10 +49,8 @@ def handle_file_retrieval(client_socket, source_port, destination_port, headers_
             file=file_path
         )        
         headers, payload = packet.process_request()
-        print(headers)
         client_socket.send(headers)
         for i in range(len(payload)):
-            print(payload[i])
             client_socket.send(payload[i])
         print(f"File '{file_name}' sent to client.")
         
@@ -72,6 +69,7 @@ def handle_client(client_socket, source_port, destination_port):
     try:
         while True:
             headers = client_socket.recv(1024).decode() 
+            print(headers)
             if not headers:
                 print("No data received. Closing connection.")
                 break  
@@ -83,6 +81,7 @@ def handle_client(client_socket, source_port, destination_port):
 
             method = headers_json['header']['method']
             if method == 'SEND_FILE':
+                print("send file")
                 handle_file_upload(client_socket, source_port, destination_port, headers_json)
             elif method == 'GET_FILE':
                 handle_file_retrieval(client_socket, source_port, destination_port, headers_json)

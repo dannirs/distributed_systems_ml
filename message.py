@@ -1,10 +1,10 @@
 import json
 
+# only include the sequence number if the payload was split 
+# add a flag in the header to determine if the payload was split
 class message:
     def __init__(self, method, source_port, destination_port, header_list, file=None):
         self.method = method.upper()
-        self.source_port = source_port
-        self.destination_port = destination_port
         self.headers = {
             "method": self.method,
             "source_port": source_port,
@@ -26,14 +26,14 @@ class message:
             raise ValueError(f"Unsupported method: {self.method}")
 
     def handle_get_file(self):
-        if 'file_name_size' in self.header_list and 'file_name_bytes' in self.header_list:
-            return self.get_file_headers(self.header_list["file_name_size"], self.header_list["file_name_bytes"])
+        if 'file_name_size' in self.header_list and 'file_name' in self.header_list:
+            return self.get_file_headers(self.header_list["file_name_size"], self.header_list["file_name"])
         else:
             raise ValueError("Missing parameters for GET_FILE request")
 
     def handle_send_file(self):
-        if 'file_name_size' in self.header_list and 'file_name_bytes' in self.header_list and "file_size" in self.header_list:
-            headers = self.send_file_headers(self.header_list["file_name_size"], self.header_list["file_name_bytes"], self.header_list["file_size"])
+        if 'file_name_size' in self.header_list and 'file_name' in self.header_list and "file_size" in self.header_list:
+            headers = self.send_file_headers(self.header_list["file_name_size"], self.header_list["file_name"], self.header_list["file_size"])
             if self.file:
                 payload = self.get_payload(self.file)
                 return headers, payload
@@ -61,24 +61,22 @@ class message:
         else:
             raise ValueError("Missing parameters for RETRIEVE_FILE response")
 
-    def get_file_headers(self, file_name_size, file_name_bytes):
+    def get_file_headers(self, file_name_size, file_name):
         packet = {
-            "method": "GET_FILE",
             "header": {
                 **self.headers,
                 "file_name_size": file_name_size,
-                "file_name_bytes": file_name_bytes
+                "file_name": file_name
             }
         }
         return json.dumps(packet, indent=4).encode('utf-8')
 
-    def send_file_headers(self, file_name_size, file_name_bytes, file_size):
+    def send_file_headers(self, file_name_size, file_name, file_size):
         packet = {
-            "method": "SEND_FILE",
             "header": {
                 **self.headers,
                 "file_name_size": file_name_size,
-                "file_name_bytes": file_name_bytes,
+                "file_name": file_name,
                 "file_size": file_size
             }
         }
@@ -86,7 +84,6 @@ class message:
 
     def store_file_headers(self, status_message):
         packet = {
-            "method": "STORE_FILE",
             "header": {
                 **self.headers,
                 "status_message": status_message
@@ -96,7 +93,6 @@ class message:
 
     def retrieve_file_headers(self, status_message, file_size=None):
         packet = {
-            "method": "RETRIEVE_FILE",
             "header": {
                 **self.headers,
                 "status_message": status_message,
@@ -114,7 +110,7 @@ class message:
                 if not file_data:
                     break
                 packet = {
-                    "seq_num": seq_num,
+                    "seq_num": seq_num, 
                     "payload": {
                         "file_data": file_data.hex()
                     }
