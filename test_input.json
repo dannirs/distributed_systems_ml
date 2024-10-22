@@ -1,0 +1,20 @@
+{"test_send_file": 
+    {
+        "method": "send_file",
+        "header_list": {
+            "file_name": "username.csv",
+            "payload_type": 2
+        },
+        "payload": ""
+    },
+"test_retrieve_file":
+    {
+        "method": "retrieve_file",
+        "header_list": {
+            "file_name": "username.csv",
+            "payload_type": 1
+        },
+        "payload": ""
+    }
+}
+

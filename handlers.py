@@ -11,7 +11,7 @@ def write_to_file(client_socket, file_name, file_size):
             if not file_data:
                 break
             file_data_json = json.loads(file_data)
-            file_data_bytes = bytes.fromhex(file_data_json['payload']['file_data'])
+            file_data_bytes = bytes.fromhex(file_data_json['payload'])
             f.write(file_data_bytes)
             bytes_received += len(file_data)
 
