@@ -4,14 +4,14 @@ import os
 # only include the sequence number if the payload was split 
 # add a flag in the header to determine if the payload was split
 class message:
-    def __init__(self, packet, source_port, dest_port):
-        self.method = packet["method"].lower()
-        # self.headers = {
-        #     "source_port": source_port,
-        #     "destination_port": destination_port
-        # }
-        self.header_list = packet["params"]["header_list"]
-        self.payload = packet["params"]["payload"]
+    def __init__(self, method, source_port, destination_port, header_list, payload=None):
+        self.method = method
+        self.headers = {
+            "source_port": source_port,
+            "destination_port": destination_port
+        }
+        self.header_list = header_list
+        self.payload = payload
     
     def process_headers(self):
         if self.method == "send_file":
@@ -22,23 +22,32 @@ class message:
             return self.resp_preprocess_retrieve_file()
         elif self.method == "send_file_resp": 
             return self.resp_preprocess_send_file()
+        elif self.method == "send_value":
+            return self.req_preprocess_send_value()
+        elif self.method == "retrieve_value":
+            return self.req_preprocess_retrieve_value()
+        elif self.method == "send_value_resp":
+            return self.resp_preprocess_send_value()
+        elif self.method == "retrieve_value_resp":
+            return self.resp_preprocess_retrieve_value()
         else: 
             print("Method not found")
             raise ValueError(f"Unsupported method: {self.method}")
 
     def req_preprocess_send_file(self):
+        print(self.header_list)
         if "file_name" not in self.header_list: 
             raise ValueError("Missing parameters for request")
         if not self.header_list["file_name"]:
             raise ValueError("Missing parameters for request")
-        if not self.payload:
-            raise ValueError("Missing parameters for request")
 
-        file_size = os.path.getsize(self.header_list["header_list"]["file_name"])
+        file_size = os.path.getsize(self.header_list["file_name"])
         self.header_list["file_size"] = file_size
         self.header_list["payload_type"] = 2
         self.header_list["status"] = None
-        return json.dumps(self.header_list, indent=4).encode('utf-8')
+
+        return self.header_list
+        # return json.dumps(self.header_list, indent=4)
         
 
     def req_preprocess_retrieve_file(self):
@@ -47,18 +56,14 @@ class message:
         if not self.header_list["file_name"]:
             raise ValueError("Missing parameters for request")
 
-        file_size = os.path.getsize(self.header_list["header_list"]["file_name"])
+        file_size = os.path.getsize(self.header_list["file_name"])
         self.header_list["file_size"] = file_size
         self.header_list["payload_type"] = 0
         self.header_list["status"] = None
-        return json.dumps(self.header_list, indent=4).encode('utf-8')
+        return self.header_list
     
     def resp_preprocess_retrieve_file(self):
         if "file_name" not in self.header_list or not self.header_list["file_name"]: 
-            raise ValueError("Missing parameters for request")
-        if "file_path" not in self.header_list or not self.header_list["file_path"]:
-            raise ValueError("Missing parameters for request")
-        if "file_size" not in self.header_list or not self.header_list["file_size"]:
             raise ValueError("Missing parameters for request")
         if "status" not in self.header_list:
             raise ValueError("Missing parameters for request")
@@ -70,7 +75,7 @@ class message:
             self.header_list["file_size"] = file_size
             self.header_list["payload_type"] = 2
             self.header_list["need_to_write"] = True
-        return json.dumps(self.header_list, indent=4).encode('utf-8')
+        return self.header_list
     
     def resp_preprocess_send_file(self):
         if "file_name" not in self.header_list: 
@@ -82,16 +87,52 @@ class message:
         
         self.header_list["payload_type"] = 0
         self.header_list["need_to_write"] = False
-        return json.dumps(self.header_list, indent=4).encode('utf-8')
+        return self.header_list
+
+    def req_preprocess_send_value(self):
+        if "key" not in self.header_list or not self.header_list["key"]: 
+            raise ValueError("Missing parameters for request")
+        if not self.payload:
+            raise ValueError("Missing parameters for request")
+
+        self.header_list["payload_type"] = 1
+        self.header_list["need_to_write"] = False
+        return self.header_list
+
+    def req_preprocess_retrieve_value(self):
+        if "key" not in self.header_list or not self.header_list["key"]: 
+            raise ValueError("Missing parameters for request")
+
+        self.header_list["payload_type"] = 0
+        self.header_list["need_to_write"] = False
+        return self.header_list
+
+    def resp_preprocess_send_value(self):
+        if "status" not in self.header_list or not self.header_list["status"]: 
+            raise ValueError("Missing parameters for request")
+
+        self.header_list["payload_type"] = 0
+        self.header_list["need_to_write"] = False
+        return self.header_list
+
+    def resp_preprocess_retrieve_value(self):
+        if not self.payload:
+            raise ValueError("Missing parameters for request")
+        if "status" not in self.header_list or not self.header_list["status"]: 
+            raise ValueError("Missing parameters for request")
+
+        self.header_list["payload_type"] = 1
+        self.header_list["need_to_write"] = False
+        return self.header_list
 
     def process_payload(self):
         if self.header_list["payload_type"] != 2:
             raise ValueError("Incorrect payload type")
         else:
-            if "file_path" not in self.header_list or not self.header_list["file_path"]:
+            if "file_name" not in self.header_list or not self.header_list["file_name"]:
                 raise ValueError("Missing path to file")
             
-            file = self.header_list["file_path"]
+            file = self.header_list["file_name"]
             data_list = []
             seq_num = 0
             with open(file, 'rb') as f:
@@ -101,14 +142,13 @@ class message:
                         break
                     packet = {
                         "seq_num": seq_num, 
-                        "payload": {
-                            "file_data": file_data.hex()
-                        }
+                        "payload": file_data.hex()
                     }
-                    data_list.append(json.dumps(packet, indent=4).encode('utf-8'))
+                    # data_list.append(json.dumps(packet, indent=4))
                     seq_num += 1
             f.close()
-            return data_list
+            # return data_list
+            return packet
         
             # return self.read_file_payload()
         # elif self.header_list["payload_type"] == 1:

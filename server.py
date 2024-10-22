@@ -17,35 +17,40 @@ from jsonrpc import dispatcher, JSONRPCResponseManager
 # it can be stored in memory/a cache on the server-side (ex. a dictionary)
 # create a manager to manage the whole process 
 
-class RPCService:
+class FileService:
     def __init__(self, server):
         self.server = server
+        self.file_store = {}
 
-    def send_file(self, request, sock=None):
-        file_name = request["params"]["header_list"]["file_name"]
-        file_size = request["params"]["header_list"]["file_size"]
+    @dispatcher.add_method
+    def send_file(self, file_name=None, file_size=None, payload_type=None, status=None, seq_num=None, payload=None):
+        print("server in send_file")
         file_path = f"server_files/{file_name}"
-        write_to_file(sock, file_path, file_size)
+        with open(file_path, 'wb') as f:
+            file_data_bytes = bytes.fromhex(payload)
+            f.write(file_data_bytes)
 
-        self.server.file_store[file_name] = file_path
+        self.file_store[file_name] = file_path
+        print(self.file_store)
         print(f"File '{file_name}' received and stored.")
         status = 200
 
         packet = message(
             method="send_file_resp", 
-            source_port=self.server.source_port, 
-            destination_port=sock.getpeername(), 
-            header_list={"status": status}
+            source_port=self.server.port, 
+            destination_port=self.server.socket, 
+            header_list={"status": status, "file_name": file_name}
         )
-        headers = packet.process_request()
+        headers = packet.process_headers()
         return headers 
-        
-    def retrieve_file(self, request, sock=None):
-        file_name = request["params"]["header_list"]["file_name"]
+
+    @dispatcher.add_method
+    def retrieve_file(self, file_name=None, file_size=None, payload_type=None, status=None):
+        print(self.file_store)
         file_path = None
         file_size = None
-        if file_name in self.server.file_store:
-            file_path = self.server.file_store[file_name]
+        if file_name in self.file_store:
+            file_path = self.file_store[file_name]
             file_size = os.path.getsize(file_path)
             status = 200
         else: 
@@ -54,40 +59,68 @@ class RPCService:
 
         packet = message( 
             method="retrieve_file_resp", 
-            source_port=self.server.source_port, 
-            destination_port=sock.getpeername(), 
+            source_port=self.server.port, 
+            destination_port=self.server.socket,
             header_list={"file_name": file_name, "file_path": file_path, "file_size": file_size, "status": status}
         )        
         
-        headers = packet.process_headers()
-        sock.send(headers)
+        response = packet.process_headers()
+        # self.server.conn.send(response)
 
         if status == 200: 
             payload = packet.process_payload()
-            for i in range(len(payload)):
-                sock.send(payload[i])
-            print(f"File '{file_name}' sent to client.")
+            json_payload = json.loads(payload)
+            response['params'].update(json_payload['params'])
+            response = json.dumps(response)
+        
+        return response
+
+
+        # if json_params['params']['payload_type'] == 2:
+        #     payload = conn.recv(1024).decode('utf-8')
+        #     json_payload = json.loads(payload)
+        #     json_params['params'].update(json_payload['params'])
+        # request = json.dumps(json_params)
+        # print(request)
+
+        #     for i in range(len(payload)):
+        #         self.server.socket.send(payload[i])
+        #     print(f"File '{file_name}' sent to client.")
 
 class server:
     def __init__(self, host='localport', port=6789):
-        self.file_store = {}
         self.single_value_store = {}  
         self.host = host
         self.port = port
-        # Instantiate the service class
-        self.service = RPCService(self)
+        self.socket = None
+        self.conn = None
 
-        # Register class methods with the dispatcher
-        dispatcher.add_method(self.service.send_file)
-        dispatcher.add_method(self.service.retrieve_file)
-    
     def handle_client(self, conn):
+        server_instance = server()
+
+        # Create an instance of the class
+        file_service = FileService(server_instance)
+
+        # Register the method using the instance method
+        dispatcher["send_file"] = file_service.send_file
+        dispatcher["retrieve_file"] = file_service.retrieve_file
+        
         # Receive the request from the client
         request = conn.recv(1024).decode('utf-8')
+        print("server handle_client() got request")
+        json_params = json.loads(request)
+        
+        if json_params['params']['payload_type'] == 2:
+            payload = conn.recv(1024).decode('utf-8')
+            print(payload)
+            json_payload = json.loads(payload)
+            json_params['params'].update(json_payload['params'])
+        request = json.dumps(json_params)
+        print(request)
 
         # Handle the JSON-RPC request and generate a response
-        response = JSONRPCResponseManager.handle(request, dispatcher, sock=conn)
-
+        response = JSONRPCResponseManager.handle(request, dispatcher)
+        print("server generated response")
         # Send the JSON-RPC response back to the client
         conn.sendall(response.json.encode('utf-8'))
 
@@ -99,9 +132,12 @@ class server:
 
         while True:
             conn, addr = server_socket.accept()
+            self.conn = conn
+            self.socket = addr
             print(f"Connected by {addr}")
             self.handle_client(conn)
             conn.close()
+        
 
 if __name__ == '__main__':
     rpc_server = server(host='localhost', port=5678)

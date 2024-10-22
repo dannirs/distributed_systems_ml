@@ -96,7 +96,7 @@ class client:
         jsonrpc = "2.0"
         method = request_params["method"]
         params = request_params["header_list"]
-        id = random.randint()
+        id = random.randint(1, 40000)
         payload = ""
         if "payload" in request_params:
             payload = request_params["payload"]
@@ -108,7 +108,7 @@ class client:
                         header_list=params,
                         payload=payload
                     )
-        headers = message.process_header(msg)
+        headers = message.process_headers(msg)
 
         request =   {
                         "jsonrpc": jsonrpc,
@@ -119,7 +119,7 @@ class client:
         packet = json.dumps(request)
         s.sendall(packet.encode('utf-8'))
 
-        if headers['header_list']['payload_type'] != 0:
+        if method == "send_file":
             payload_json = message.process_payload(msg)
             for i in range(len(payload_json)):
                 request =   {
@@ -134,17 +134,18 @@ class client:
         return
 
     def check_response(self, s, response_data):
-        if response_data["header_list"]["status"] != 200: 
+        print(response_data)
+        if response_data["result"]["status"] != 200: 
             print("Request failed.")
             return False
-        elif response_data["header_list"]["need_write"] == 1:
-            file_name = response_data['header_list']['file_name']
-            file_size = response_data['header_list']['file_size']
+        elif response_data["result"]["need_to_write"] == True:
+            file_name = response_data["result"]['file_name']
+            file_size = response_data["result"]['file_size']
             new_file_name = f'downloaded_{file_name}'
             write_to_file(s, new_file_name, file_size)
             print("File retrieved.")
             return True
-        elif response_data["header_list"]["payload_type"] == 1:
+        elif response_data["result"]["payload_type"] == 1:
             print("Request success.")
             print(response_data["payload"])
         else:
@@ -153,12 +154,12 @@ class client:
 
     def start_client(self, request_params):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect(('localhost', 65432))
-            send_message(request_params)
+            s.connect(('localhost', 5678))
+            self.send_message(s, request_params)
 
             response = s.recv(1024).decode('utf-8')
             response_data = json.loads(response)
-            check_response(s, response_data)
+            self.check_response(s, response_data)
         return
 
         # process the request_params so it's in a format accepted by the rpc
@@ -203,4 +204,6 @@ if __name__ == "__main__":
     with open('test_input.json', 'r') as file:
         data = json.load(file)
     client.start_client(data["test_send_file"])
-    client.start_client(data["test_receive_file"])
+    client.start_client(data["test_retrieve_file"])
+    # client.start_client(data["test_send_value"])
+    # client.start_client(data["test_receive_value"])
