@@ -148,7 +148,7 @@ class message:
                     seq_num += 1
             f.close()
             # return data_list
-            return packet
+            return json.dumps(packet, indent=4)
         
             # return self.read_file_payload()
         # elif self.header_list["payload_type"] == 1:
