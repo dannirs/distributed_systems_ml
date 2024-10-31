@@ -16,17 +16,17 @@
     },
 "test_send_value":
     {
-        "method": "send_value",
+        "method": "send_file",
         "header_list": {
-            "key": "key1"
+            "file_name": "key1"
         },
         "payload": "value1"
     },
 "test_retrieve_value":
     {
-        "method": "retrieve_value",
+        "method": "retrieve_file",
         "header_list": {
-            "key": "key1"
+            "file_name": "key1"
         },
         "payload": ""
     }

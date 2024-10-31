@@ -71,7 +71,7 @@ class message:
         if self.header_list["status"] != 200:
             self.header_list["need_to_write"] = False
         else:
-            file_size = os.path.getsize(self.header_list["header_list"]["file_name"])
+            file_size = os.path.getsize(self.header_list["file_name"])
             self.header_list["file_size"] = file_size
             self.header_list["payload_type"] = 2
             self.header_list["need_to_write"] = True
@@ -148,7 +148,7 @@ class message:
                     seq_num += 1
             f.close()
             # return data_list
-            return json.dumps(packet, indent=4)
+            return packet
         
             # return self.read_file_payload()
         # elif self.header_list["payload_type"] == 1:

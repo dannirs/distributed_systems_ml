@@ -117,19 +117,21 @@ class client:
                         "id": id
                     }
         packet = json.dumps(request)
+        print(packet)
+        print(type(packet))
         s.sendall(packet.encode('utf-8'))
 
         if method == "send_file":
             payload_json = message.process_payload(msg)
-            for i in range(len(payload_json)):
-                request =   {
-                                "jsonrpc": jsonrpc,
-                                "method": method,
-                                "params": payload_json,
-                                "id": id
-                            }
-                packet = json.dumps(request)
-                s.sendall(packet.encode('utf-8'))
+            # for i in range(len(payload_json)):
+            request =   {
+                            "jsonrpc": jsonrpc,
+                            "method": method,
+                            "params": payload_json,
+                            "id": id
+                        }
+            packet = json.dumps(request)
+            s.sendall(packet.encode('utf-8'))
 
         return
 
@@ -142,7 +144,7 @@ class client:
             file_name = response_data["result"]['file_name']
             file_size = response_data["result"]['file_size']
             new_file_name = f'downloaded_{file_name}'
-            write_to_file(s, new_file_name, file_size)
+            write_to_file(response_data["result"]["payload"], new_file_name)
             print("File retrieved.")
             return True
         elif response_data["result"]["payload_type"] == 1:
@@ -203,7 +205,20 @@ if __name__ == "__main__":
     client = client()
     with open('test_input.json', 'r') as file:
         data = json.load(file)
-    client.start_client(data["test_send_file"])
-    client.start_client(data["test_retrieve_file"])
+    # thread1 = threading.Thread(target=client.start_client, args=(data["test_send_file"],))
+    # thread1.start()
+    # thread1.join()
+    # thread1 = threading.Thread(target=client.start_client, args=(data["test_retrieve_file"],))
+    # thread1.start()
+    # thread1.join()
+    thread1 = threading.Thread(target=client.start_client, args=(data["test_send_value"],))
+    thread1.start()
+    thread1.join()
+    # thread1 = threading.Thread(target=client.start_client, args=(data["test_retrieve_value"],))
+    # thread1.start()
+    # thread1.join()
+    # client.start_client(data["test_send_file"])
+    # print(data["test_retrieve_file"])
+    # client.start_client(data["test_retrieve_file"])
     # client.start_client(data["test_send_value"])
     # client.start_client(data["test_receive_value"])

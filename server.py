@@ -5,6 +5,7 @@ import json
 import threading
 from handlers import write_to_file
 from jsonrpc import dispatcher, JSONRPCResponseManager
+import time
 
 # send a python file between client and server, and then send the data file for the python program over
 # use the rpc feature to call the python program to run and process that data file
@@ -31,11 +32,13 @@ class FileService:
             f.write(file_data_bytes)
 
         self.file_store[file_name] = file_path
+        self.server.file_store[file_name] = file_path
+        print(self.server.file_store)
         print(self.file_store)
         print(f"File '{file_name}' received and stored.")
         status = 200
 
-        packet = message(
+        packet = message( 
             method="send_file_resp", 
             source_port=self.server.port, 
             destination_port=self.server.socket, 
@@ -46,11 +49,11 @@ class FileService:
 
     @dispatcher.add_method
     def retrieve_file(self, file_name=None, file_size=None, payload_type=None, status=None):
-        print(self.file_store)
+        print(self.server.file_store)
         file_path = None
         file_size = None
-        if file_name in self.file_store:
-            file_path = self.file_store[file_name]
+        if file_name in self.server.file_store:
+            file_path = self.server.file_store[file_name]
             file_size = os.path.getsize(file_path)
             status = 200
         else: 
@@ -65,14 +68,17 @@ class FileService:
         )        
         
         response = packet.process_headers()
+        print(type(response))
         # self.server.conn.send(response)
-
+        print(response)
         if status == 200: 
             payload = packet.process_payload()
-            json_payload = json.loads(payload)
-            response['params'].update(json_payload['params'])
-            response = json.dumps(response)
-        
+            print(payload)
+            json_payload = json.dumps(payload)
+            print(type(payload))
+            response.update(payload)
+            # response = json.dumps(response)
+        print(type(response))
         return response
 
 
@@ -90,16 +96,17 @@ class FileService:
 class server:
     def __init__(self, host='localport', port=6789):
         self.single_value_store = {}  
+        self.file_store = {}
         self.host = host
         self.port = port
         self.socket = None
         self.conn = None
 
     def handle_client(self, conn):
-        server_instance = server()
+        # server_instance = server()
 
         # Create an instance of the class
-        file_service = FileService(server_instance)
+        file_service = FileService(self)
 
         # Register the method using the instance method
         dispatcher["send_file"] = file_service.send_file
@@ -107,41 +114,102 @@ class server:
         
         # Receive the request from the client
         request = conn.recv(1024).decode('utf-8')
+        if not request:
+            return False
         print("server handle_client() got request")
-        json_params = json.loads(request)
-        
-        if json_params['params']['payload_type'] == 2:
-            payload = conn.recv(1024).decode('utf-8')
+        print(request)
+        print(type(request))
+        marker = "{\"jsonrpc\":"
+        # if json_params['params']['payload_type'] == 2:
+
+            # Find the start of the packet
+        marker_index = request.index(marker)
+        # Check for the next occurrence of the marker to find the end of the packet
+        next_marker_index = request.find(marker, marker_index + len(marker))
+        if next_marker_index == -1:
+            # If there is no second marker, wait for more data
+            json_params = json.loads(request)
+            if json_params['params']['payload_type'] == 2:
+                payload = conn.recv(1024).decode('utf-8')
+        # print(payload)
+                json_payload = json.loads(payload)
+                print(type(json_params['params']))
+                print(type(json_payload['params']))
+                print(json_params['params'])
+                print(json_payload['params'])
+                json_params['params'].update(json_payload['params'])
+        else: 
+            params = request[marker_index:next_marker_index]
+            json_params = json.loads(params)
+            print(json_params)
+            payload = request[next_marker_index:]
             print(payload)
             json_payload = json.loads(payload)
             json_params['params'].update(json_payload['params'])
+                
+
+        # json_params = json.loads(request)
+        # # print(json_params)
+        # if json_params['params']['payload_type'] == 2:
+        #     payload = conn.recv(1024).decode('utf-8')
+        #     # print(payload)
+        #     json_payload = json.loads(payload)
+        #     print(type(json_params['params']))
+        #     print(type(json_payload['params']))
+        #     print(json_params['params'])
+        #     print(json_payload['params'])
+        #     json_params['params'].update(json_payload['params'])
         request = json.dumps(json_params)
         print(request)
 
         # Handle the JSON-RPC request and generate a response
         response = JSONRPCResponseManager.handle(request, dispatcher)
-        print("server generated response")
         # Send the JSON-RPC response back to the client
         conn.sendall(response.json.encode('utf-8'))
+        print("server generated response")
+        time.sleep(0.1)
+        return False
 
-    def start_server(self, host='localhost', port=5678):
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind((host, port))
-        server_socket.listen(1)
-        print(f"TCP JSON-RPC server listening on {host}:{port}")
-
-        while True:
-            conn, addr = server_socket.accept()
-            self.conn = conn
-            self.socket = addr
-            print(f"Connected by {addr}")
-            self.handle_client(conn)
+    def start_server(self, conn, host='localhost', port=5678):
+        # conn, addr = server_socket.accept()
+        # self.conn = conn
+        # self.socket = addr
+        # print(f"Connected by {addr}")
+        try:
+            while True:
+                try:
+                    # Assuming `handle_client` processes each request in the connection
+                    if not self.handle_client(conn):
+                        print("Client has finished sending requests.")
+                        break
+                except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+                    # Handle the client disconnecting unexpectedly
+                    print("Client disconnected.")
+                    break
+        finally:
             conn.close()
-        
+            print("Connection closed")
+    
 
 if __name__ == '__main__':
     rpc_server = server(host='localhost', port=5678)
-    rpc_server.start_server()
+    host='localhost'
+    port=5678
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((host, port))
+    server_socket.listen(5)
+    print(f"TCP JSON-RPC server listening on {host}:{port}")
+    while True:  # Loop to keep server open for multiple connections
+        conn, addr = server_socket.accept()
+        rpc_server.conn = conn
+        rpc_server.socket = addr
+        print(f"Connected by {addr}")
+        print(rpc_server.file_store)
+        # Start a new thread to handle each client connection
+        client_thread = threading.Thread(target=rpc_server.handle_client, args=(conn,))
+        client_thread.start()
+        print(rpc_server.file_store)
+    # rpc_server.start_server(server_socket)
 
 
 

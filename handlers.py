@@ -4,6 +4,7 @@ import json
 from message import message
 
 def write_to_file(payload, file_name):
+    print(type(payload))
     with open(file_name, 'wb') as f:
         file_data_bytes = bytes.fromhex(payload)
         f.write(file_data_bytes)
