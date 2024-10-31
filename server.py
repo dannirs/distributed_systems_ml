@@ -21,20 +21,19 @@ import time
 class FileService:
     def __init__(self, server):
         self.server = server
-        self.file_store = {}
 
     @dispatcher.add_method
-    def send_file(self, file_name=None, file_size=None, payload_type=None, status=None, seq_num=None, payload=None):
+    def send_file(self, file_name=None, payload_type=None, status=None, file_path=None, seq_num=None, payload=None):
+        print(file_path)
         print("server in send_file")
-        file_path = f"server_files/{file_name}"
-        with open(file_path, 'wb') as f:
-            file_data_bytes = bytes.fromhex(payload)
-            f.write(file_data_bytes)
-
-        self.file_store[file_name] = file_path
-        self.server.file_store[file_name] = file_path
+        if payload_type == 2:
+            file_path = f"server_files/{file_name}"
+            with open(file_path, 'wb') as f:
+                file_data_bytes = bytes.fromhex(payload)
+                f.write(file_data_bytes)
+        print(file_path)
+        self.server.file_store[file_name] = (payload_type, file_path)
         print(self.server.file_store)
-        print(self.file_store)
         print(f"File '{file_name}' received and stored.")
         status = 200
 
@@ -48,13 +47,14 @@ class FileService:
         return headers 
 
     @dispatcher.add_method
-    def retrieve_file(self, file_name=None, file_size=None, payload_type=None, status=None):
+    def retrieve_file(self, file_name=None, payload_type=None, status=None):
         print(self.server.file_store)
         file_path = None
-        file_size = None
+        data_type = 0
+        payload_type = 0
         if file_name in self.server.file_store:
-            file_path = self.server.file_store[file_name]
-            file_size = os.path.getsize(file_path)
+            payload_type = self.server.file_store[file_name][0]
+            file_path = self.server.file_store[file_name][1]
             status = 200
         else: 
             status = 404
@@ -64,23 +64,29 @@ class FileService:
             method="retrieve_file_resp", 
             source_port=self.server.port, 
             destination_port=self.server.socket,
-            header_list={"file_name": file_name, "file_path": file_path, "file_size": file_size, "status": status}
+            header_list={"file_name": file_name, "file_path": file_path, "status": status, "payload_type": payload_type}
         )        
         
         response = packet.process_headers()
-        print(type(response))
+        print("header type: ", type(response))
         # self.server.conn.send(response)
         print(response)
         if status == 200: 
-            payload = packet.process_payload()
-            print(payload)
-            json_payload = json.dumps(payload)
-            print(type(payload))
+            if payload_type == 2:
+                payload = packet.process_payload()
+                print(payload)
+                json_payload = json.dumps(payload)
+                print("payload type: ", type(payload))
+            else: 
+                payload = {"payload": file_path}
+                print("payload type: ", type(payload))
+                # json_payload = json.dumps(payload)
+                # print("json payload type: ", type(json_payload))
             response.update(payload)
+            print("response type: ", type(response))
             # response = json.dumps(response)
         print(type(response))
         return response
-
 
         # if json_params['params']['payload_type'] == 2:
         #     payload = conn.recv(1024).decode('utf-8')

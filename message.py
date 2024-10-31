@@ -41,11 +41,15 @@ class message:
         if not self.header_list["file_name"]:
             raise ValueError("Missing parameters for request")
 
-        file_size = os.path.getsize(self.header_list["file_name"])
-        self.header_list["file_size"] = file_size
-        self.header_list["payload_type"] = 2
+        # file_size = os.path.getsize(self.header_list["file_name"])
+        # self.header_list["file_size"] = file_size
         self.header_list["status"] = None
-
+        self.header_list["file_path"] = ""
+        if self.payload: 
+            self.header_list["payload_type"] = 1
+            self.header_list["file_path"] = self.payload
+        else:
+            self.header_list["payload_type"] = 2
         return self.header_list
         # return json.dumps(self.header_list, indent=4)
         
@@ -56,8 +60,8 @@ class message:
         if not self.header_list["file_name"]:
             raise ValueError("Missing parameters for request")
 
-        file_size = os.path.getsize(self.header_list["file_name"])
-        self.header_list["file_size"] = file_size
+        # file_size = os.path.getsize(self.header_list["file_name"])
+        # self.header_list["file_size"] = file_size
         self.header_list["payload_type"] = 0
         self.header_list["status"] = None
         return self.header_list
@@ -67,14 +71,12 @@ class message:
             raise ValueError("Missing parameters for request")
         if "status" not in self.header_list:
             raise ValueError("Missing parameters for request")
+        if "payload_type" not in self.header_list or not self.header_list["payload_type"]:
+            raise ValueError("Missing parameters for request")
 
-        if self.header_list["status"] != 200:
-            self.header_list["need_to_write"] = False
-        else:
-            file_size = os.path.getsize(self.header_list["file_name"])
-            self.header_list["file_size"] = file_size
-            self.header_list["payload_type"] = 2
-            self.header_list["need_to_write"] = True
+        # if self.header_list["status"] == 200:
+        #     file_size = os.path.getsize(self.header_list["file_name"])
+        #     self.header_list["file_size"] = file_size
         return self.header_list
     
     def resp_preprocess_send_file(self):
@@ -86,7 +88,7 @@ class message:
             raise ValueError("Missing parameters for request")
         
         self.header_list["payload_type"] = 0
-        self.header_list["need_to_write"] = False
+        # self.header_list["need_to_write"] = False
         return self.header_list
 
     def req_preprocess_send_value(self):
@@ -126,7 +128,7 @@ class message:
         return self.header_list
 
     def process_payload(self):
-        if self.header_list["payload_type"] != 2:
+        if self.header_list["payload_type"] == 1:
             raise ValueError("Incorrect payload type")
         else:
             if "file_name" not in self.header_list or not self.header_list["file_name"]:
