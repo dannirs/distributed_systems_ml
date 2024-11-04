@@ -1,32 +1,32 @@
-{"test_send_file": 
+{"test_send_data": 
     {
-        "method": "send_file",
+        "method": "send_data",
         "header_list": {
-            "file_name": "username.csv"
+            "key": "username.csv"
         },
         "payload": ""
     },
-"test_retrieve_file":
+"test_retrieve_data":
     {
-        "method": "retrieve_file",
+        "method": "retrieve_data",
         "header_list": {
-            "file_name": "username.csv"
+            "key": "username.csv"
         },
         "payload": ""
     },
 "test_send_value":
     {
-        "method": "send_file",
+        "method": "send_data",
         "header_list": {
-            "file_name": "key1"
+            "key": "key1"
         },
         "payload": "value1"
     },
 "test_retrieve_value":
     {
-        "method": "retrieve_file",
+        "method": "retrieve_data",
         "header_list": {
-            "file_name": "key1"
+            "key": "key1"
         },
         "payload": ""
     }
