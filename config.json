@@ -21,6 +21,8 @@
         "master_ip": "localhost",
         "master_port": 5678,
         "node_type": "WorkerNode",
-        "role": "WorkerClient"
+        "role": "WorkerClient",
+        "server_ip": "localhost",
+        "server_port": 5679
     }
 ]

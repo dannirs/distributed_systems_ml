@@ -6,6 +6,35 @@ from handlers import write_to_file
 from jsonrpc import dispatcher, JSONRPCResponseManager
 import time
 
+# JobManager sends RPC instruction to taskmanager and taskmanager executes the instruction
+# JobManager, MasterNode, etc. should all use jsonrpc
+# Add periodic reporting of the task (still in progress message)
+# If no heartbeat received, JobManager sends another instruction to kill the task and restart on a
+# different client
+# TaskManager - reports on task progress, reports when task complete
+# MasterNode has a DataClient/Manager --> data can be split into many chunks, it stores where
+# each piece of the data is stored (key: [(file_name, addr), (file_name,addr)])
+# (ip, port)
+# name of file when data is split into chunks:
+# data.txt ---> data.txt1, data.txt2, data.txt3
+# userclient splits large file into chunks and sends to available workers (this can also be done by 
+# jobmanager), gets available workers from 
+# masternode; userclient checks through all the tasks to see which files need to be split
+# WorkerNode contains a data storage (data source) that holds data locally  
+# client task to retrieve data --> call datamanager in masternode to get server location --> 
+# connect to the correct server after getting response (server = worker, client = client)
+# job = task1, task2, task3 (tasks should run in parallel)
+# No interdependencies between tasks in the same job
+# map phase = 1 job, reduce phase = another job
+# UserClient - replaces the job.json file, the user inputs command line arguments
+# change Node class to UserClient
+# Worker node --> self.server, self.clients
+# worker node is initialized, server is connected to master and listens for requests, when the server
+# gets a task, 
+# start with 3 worker nodes, each node is in its own directory, 1 masternode
+# each worker node contains 1 server, any number of clients (1 or more)
+
+
 class FileService:
     def __init__(self, server):
         self.server = server
@@ -27,6 +56,7 @@ class FileService:
         self.server.file_store[key] = (payload_type, file_path)
         print(f"'{key}' received and stored in cache.")
         status = 200
+        self.send_data_location(key)
 
         # A response is returned to the client using the method send_data_resp. The response includes the status 
         # to indicate if the request succeeded, and the key.
@@ -50,9 +80,9 @@ class FileService:
             payload_type = self.server.file_store[key][0]
             file_path = self.server.file_store[key][1]
             status = 200
-        else: 
+        else:
             status = 404
-            print(f"'{key}' not found in cache.")
+            print(f"'{key}' not found in cache.") 
 
         # A response is returned to the client using the method retrieve_data_resp. The status and data type are
         # included so that the client knows how to process the response.
@@ -79,11 +109,35 @@ class FileService:
             response.update(payload)
         return response
 
+
+    @dispatcher.add_method
+    def send_data_location(self, key=None):
+        # Send data location to the master
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            print("Server is sending data location")
+            s.connect((self.server.master_ip, self.server.master_port))
+            request = {
+                "jsonrpc": "2.0",
+                "method": "store_data_location",
+                "params": {
+                    "key": key,
+                    "address": (self.server.ip, self.server.port)
+                },
+                "id": 1
+            }
+            print(request)
+            s.sendall(json.dumps(request).encode('utf-8'))
+            response = s.recv(1024).decode('utf-8')
+            print("Data location sent:", response)
+
 class WorkerServer:
-    def __init__(self):
+    def __init__(self, master_ip, master_port, ip, port):
         self.file_store = {}
-        self.
- 
+        self.master_ip = master_ip
+        self.master_port = master_port
+        self.ip = ip
+        self.port = port
+
     def handle_client(self, conn):
         # The RPC is initiated as an instance, with the server being passed in as a parameter so that the
         # RPC can access the server's local cache. send_data() and retrieve_data are the 2 methods that the RPC
@@ -91,6 +145,7 @@ class WorkerServer:
         file_service = FileService(self)
         dispatcher["send_data"] = file_service.send_data
         dispatcher["retrieve_data"] = file_service.retrieve_data
+        dispatcher["send_data_location"] = file_service.send_data_location
 
         # The server reads the request from the client.
         # When the client sends the headers and payload separately, the server may have already received 
@@ -100,6 +155,7 @@ class WorkerServer:
         if not request:
             return False
         print("Server received client's request in handle_client().")
+        print(request)
         marker = "{\"jsonrpc\":"
         marker_index = request.index(marker)
         next_marker_index = request.find(marker, marker_index + len(marker))
@@ -135,24 +191,33 @@ class WorkerServer:
         conn.sendall(response.json.encode('utf-8'))
         print("Server generated response.")
         time.sleep(0.1)
-        return False
+        conn.close()
+        print("Connection closed")
 
-    def start_server(self, conn):
-        try:
-            while True:
-                try:
-                    # Once the client has stopped sending requests and the response message has been
-                    # sent back, the connection wth the client is terminated.
-                    if not self.handle_client(conn):
-                        print("Client has finished sending requests.")
-                        break
-                except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
-                    print("Client disconnected.")
-                    break
-        finally:
-            conn.close()
-            print("Connection closed")
-    
+    def start_server(self):
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.bind((self.ip, self.port))
+        server_socket.listen(5)
+        print(f"TCP JSON-RPC server listening on {self.ip}:{self.port}")
+        while True:  
+            conn, addr = server_socket.accept()
+            print(f"Connected to {addr}")
+            client_thread = threading.Thread(target=self.handle_client, args=(conn,))
+            client_thread.start()
+            # try:
+            #     while True:
+            #         try:
+            #             # Once the client has stopped sending requests and the response message has been
+            #             # sent back, the connection wth the client is terminated.
+            #             if not self.handle_client(conn):
+            #                 print("Client has finished sending requests.")
+            #                 break
+            #         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            #             print("Client disconnected.")
+            #             break
+            # finally:
+            #     conn.close()
+            #     print("Connection closed")
 
 if __name__ == '__main__':
     # A server object is initialized, with a default host and port set. 
@@ -160,14 +225,3 @@ if __name__ == '__main__':
     # even after the connection with a client is terminated.
     # When a client thread is connected, the server goes into the handle_client() method.
     rpc_server = WorkerServer()
-    host = 'localhost'
-    port =  5678
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((host, port))
-    server_socket.listen(5)
-    print(f"TCP JSON-RPC server listening on {host}:{port}")
-    while True:  
-        conn, addr = server_socket.accept()
-        print(f"Connected to {addr}")
-        client_thread = threading.Thread(target=rpc_server.start_server, args=(conn,))
-        client_thread.start()
