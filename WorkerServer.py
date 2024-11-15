@@ -2,9 +2,40 @@ import socket
 from message import message
 import json
 import threading
-from handlers import write_to_file
+from handlers import write_to_file 
 from jsonrpc import dispatcher, JSONRPCResponseManager
 import time
+import random
+
+# Node:
+# -Splits job into tasks
+# -Splits large file into chunks (check through the tasks to see which files need to be split)
+# -Get available workers from MasterNode
+# -Send split file 
+# -User inputs command line arguments (replaces job.json file)
+# MasterNode: 
+# -Add jsonrpc
+# -Add a datamanager which stores where each piece of the same file has been stored
+# DataManager:
+# -Stores files as (key: [(file_name, addr), (file_name,addr)])
+# -Name of file is written as: data.txt ---> data.txt1, data.txt2, data.txt3
+# JobManager:
+# -Add jsonrpc
+# -Send task directly to taskmanager instead of client
+# -If no task progress message received, JobManager sends an instruction to kill the task and restarts it on a different client
+# -When the task is complete, JobManager removes it from the queue
+# -When job is complete, JobManager reports completion to UserClient
+# -Tasks run in parallel, no dependencies
+# TaskManager:
+# -Add jsonrpc
+# -Sends heartbeat about the task to JobManager (still in progress message)
+# -Reports when the task is complete
+# Worker:
+# -Is a separate class that contains self.server and self.clients 
+# -When the worker node is initialized, the server is connected to the master and listens for requests
+# -When the server gets a task, it starts up the client and sends the task
+# Client:
+# -Calls DataManager in MasterNode to get server location and then connects to correct server
 
 # JobManager sends RPC instruction to taskmanager and taskmanager executes the instruction
 # JobManager, MasterNode, etc. should all use jsonrpc
@@ -125,74 +156,98 @@ class FileService:
                 },
                 "id": 1
             }
-            print(request)
             s.sendall(json.dumps(request).encode('utf-8'))
             response = s.recv(1024).decode('utf-8')
             print("Data location sent:", response)
 
+    @dispatcher.add_method
+    def send_task_to_client(self, client_address, task_data):
+        """
+        Handles task requests from the JobManager.
+        """
+        print(f"WorkerServer received task: {task_data}")
+        jsonrpc = "2.0"
+        id = random.randint(1, 40000)
+        message =   {
+                        "jsonrpc": jsonrpc,
+                        "method": task_data["method"],
+                        "params": task_data,
+                        "id": id
+                    }
+        print(message)
+        client = self.server.worker.get_client((client_address[0], client_address[1]))
+        client.handle_task(message)
+
 class WorkerServer:
-    def __init__(self, master_ip, master_port, ip, port):
+    def __init__(self, master_ip, master_port, ip, port, worker):
         self.file_store = {}
         self.master_ip = master_ip
         self.master_port = master_port
         self.ip = ip
         self.port = port
+        self.worker = worker
 
     def handle_client(self, conn):
         # The RPC is initiated as an instance, with the server being passed in as a parameter so that the
         # RPC can access the server's local cache. send_data() and retrieve_data are the 2 methods that the RPC
         # can call. 
-        file_service = FileService(self)
-        dispatcher["send_data"] = file_service.send_data
-        dispatcher["retrieve_data"] = file_service.retrieve_data
-        dispatcher["send_data_location"] = file_service.send_data_location
+        try:
+            file_service = FileService(self)
+            dispatcher["send_data"] = file_service.send_data
+            dispatcher["retrieve_data"] = file_service.retrieve_data
+            dispatcher["send_data_location"] = file_service.send_data_location
+            dispatcher["send_task_to_client"] = file_service.send_task_to_client
 
-        # The server reads the request from the client.
-        # When the client sends the headers and payload separately, the server may have already received 
-        # both packets, or the server may still be waiting for the payload to arrive. This is handled by using the "jsonrpc:" 
-        # field as the delimiter between packets. 
-        request = conn.recv(1024).decode('utf-8')
-        if not request:
-            return False
-        print("Server received client's request in handle_client().")
-        print(request)
-        marker = "{\"jsonrpc\":"
-        marker_index = request.index(marker)
-        next_marker_index = request.find(marker, marker_index + len(marker))
-
-        # For the current implementation, there will only be 2 packets: 1 header packet and 1 payload packet.
-        # If there is only 1 packet received and the expected data type is a file, then the server will wait
-        # to receive the rest of the payload before adding the payload packet to the header packet.
-        # If the expected data type is a single value, there will only be one packet total and the server can
-        # immediately proceed.
-        # If the data type is a file and both packets were already received, the server will split the packets 
-        # using the delimiter before adding the payload data as a header to the header packet.
-        # TODO: factor in the fact that there might be multiple packets for the payload
-        if next_marker_index == -1:
+            # The server reads the request from the client.
+            # When the client sends the headers and payload separately, the server may have already received 
+            # both packets, or the server may still be waiting for the payload to arrive. This is handled by using the "jsonrpc:" 
+            # field as the delimiter between packets. 
+            request = conn.recv(1024).decode('utf-8')
+            if not request:
+                return False
+            print("Server received client's request in handle_client().")
             json_params = json.loads(request)
-            if json_params['params']['payload_type'] == 2:
-                payload = conn.recv(1024).decode('utf-8')
-                json_payload = json.loads(payload)
-                json_params['params'].update(json_payload['params'])
-        else: 
-            params = request[marker_index:next_marker_index]
-            json_params = json.loads(params)
-            payload = request[next_marker_index:]
-            json_payload = json.loads(payload)
-            json_params['params'].update(json_payload['params'])
+            print("Server got request: ", json_params)
+            if json_params["method"] != "send_task_to_client":
+                marker = "{\"jsonrpc\":"
+                marker_index = request.index(marker)
+                next_marker_index = request.find(marker, marker_index + len(marker))
 
-        request = json.dumps(json_params)
+                # For the current implementation, there will only be 2 packets: 1 header packet and 1 payload packet.
+                # If there is only 1 packet received and the expected data type is a file, then the server will wait
+                # to receive the rest of the payload before adding the payload packet to the header packet.
+                # If the expected data type is a single value, there will only be one packet total and the server can
+                # immediately proceed.
+                # If the data type is a file and both packets were already received, the server will split the packets 
+                # using the delimiter before adding the payload data as a header to the header packet.
+                # TODO: factor in the fact that there might be multiple packets for the payload
+                if next_marker_index == -1:
+                    json_params = json.loads(request)
+                    if json_params['params']['payload_type'] == 2:
+                        payload = conn.recv(1024).decode('utf-8')
+                        json_payload = json.loads(payload)
+                        json_params['params'].update(json_payload['params'])
+                else: 
+                    params = request[marker_index:next_marker_index]
+                    json_params = json.loads(params)
+                    payload = request[next_marker_index:]
+                    json_payload = json.loads(payload)
+                    json_params['params'].update(json_payload['params'])
 
-        # The server then calls the RPC to execute the correct method. The RPC will also create
-        # a response message to send back to the client, and the server will send this message.
-        # In order to ensure that the client receives the response before the connection is closed,
-        # a brief wait time is added before the server closes the connection.
-        response = JSONRPCResponseManager.handle(request, dispatcher)
-        conn.sendall(response.json.encode('utf-8'))
-        print("Server generated response.")
-        time.sleep(0.1)
-        conn.close()
-        print("Connection closed")
+                request = json.dumps(json_params)
+            # The server then calls the RPC to execute the correct method. The RPC will also create
+            # a response message to send back to the client, and the server will send this message.
+            # In order to ensure that the client receives the response before the connection is closed,
+            # a brief wait time is added before the server closes the connection.
+            response = JSONRPCResponseManager.handle(request, dispatcher)
+            conn.sendall(response.json.encode('utf-8'))
+            print("Server generated response.")
+            time.sleep(0.1)
+        except Exception as e:
+            print(f"Exception in handle_client: {e}")
+        finally:
+            conn.close()
+            print("Connection closed")
 
     def start_server(self):
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -200,10 +255,15 @@ class WorkerServer:
         server_socket.listen(5)
         print(f"TCP JSON-RPC server listening on {self.ip}:{self.port}")
         while True:  
+            print("Waiting for connection...")
             conn, addr = server_socket.accept()
-            print(f"Connected to {addr}")
-            client_thread = threading.Thread(target=self.handle_client, args=(conn,))
-            client_thread.start()
+            print(f"In server, Connected to {addr}")
+            try:
+                client_thread = threading.Thread(target=self.handle_client, args=(conn,))
+                client_thread.start()
+                print(f"Started thread for connection: {addr}")
+            except Exception as e:
+                print(f"Error starting thread for {addr}: {e}")
             # try:
             #     while True:
             #         try:

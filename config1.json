@@ -1,0 +1,26 @@
+[
+    {
+        "is_master": false,
+        "ip": "localhost",
+        "port": 5679,
+        "role": "WorkerServer"
+    },
+    {
+        "is_master": false,
+        "ip": "localhost",
+        "port": 5680,
+        "role": "WorkerClient"
+    },
+    {
+        "is_master": false,
+        "ip": "localhost",
+        "port": 5681,
+        "role": "WorkerClient"
+    },
+    {
+        "is_master": false,
+        "ip": "localhost",
+        "port": 5682,
+        "role": "WorkerClient"
+    }
+]

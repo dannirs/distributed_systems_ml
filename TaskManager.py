@@ -1,61 +1,60 @@
-import socket
-import json
 import threading
+import time
+import random
+from queue import Queue
+import json
+import socket
 
 class TaskManager:
-    def __init__(self, worker_ip, worker_port, master_ip, master_port):
-        self.worker_ip = worker_ip
-        self.worker_port = worker_port
-        self.master_ip = master_ip
-        self.master_port = master_port
-        self.local_data_store = {}  # Simulated local storage for this worker
+    def __init__(self, client):
+        self.current_task = None  # Tracks the current task being processed
+        self.running = True  # Controls the operation loop
+        self.client = client
 
-    def start_listening(self):
-        # Start listening for tasks from the master node
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind((self.worker_ip, self.worker_port))
-        server_socket.listen(5)
-        print(f"TaskManager listening on {self.worker_ip}:{self.worker_port}")
+    def task_complete(self, task_status, task_data):
+        # with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        #     s.connect((self.master_ip, self.master_port))
+        response = json.dumps({
+            "jsonrpc": "2.0",
+            "method": "task_update",
+            "params": {"client_addr": task_data["params"]["header_list"]["source_port"], "status": task_status, "task_id": task_data["params"]["task_id"]},
+            "id": 1
+        })
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.connect((self.client.master_ip, self.client.master_port))
+                s.sendall(response.encode('utf-8'))
+                print(f"Task update sent from {self.client.ip}:{self.client.port}")
+            except ConnectionRefusedError:
+                print("Failed to send task update: Master not reachable")
+        self.current_task = None
 
-        while True:
-            conn, addr = server_socket.accept()
-            task_thread = threading.Thread(target=self.handle_task, args=(conn,))
-            task_thread.start()
+    def process_task(self, task):
+        # Wait for a task from the JobManager
+        self.current_task = task
+        task_id = task["task_id"]
+        print(f"Received task {task_id}")
+        task_thread = threading.Thread(target=self.send_task_update, daemon=True)
+        task_thread.start()
+        self.execute_task(task_id, task["task_data"])
 
-    def handle_task(self, conn):
-        # Handle incoming task from the master
-        request = conn.recv(1024).decode('utf-8')
-        task_data = json.loads(request)
-        print(f"Received task: {task_data}")
+    def send_task_update(self):
+         while self.current_task:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.connect((self.master_ip, self.master_port))
+                    task_data = json.dumps({
+                        "jsonrpc": "2.0",
+                        "method": "task_update",
+                        "params": {"worker_ip": self.ip, "worker_port": self.port, "status": "In Progress"},
+                        "id": 1
+                    })
+                    s.sendall(task_data.encode('utf-8'))
+                    print(f"Task update sent from {self.ip}:{self.port}")
+                except ConnectionRefusedError:
+                    print("Failed to send task update: Master not reachable")
+            time.sleep(10)  # Wait 5 seconds before sending the next heartbeat
 
-        task_type = task_data["method"]
-        params = task_data["params"]
+    def stop(self):
+        self.running = False
 
-        # Execute the task based on its type
-        if task_type == "store_data":
-            result = self.store_data(params["data_key"], params["data"])
-        elif task_type == "retrieve_data":
-            result = self.retrieve_data(params["data_key"])
-        else:
-            result = {"status": "error", "message": f"Unknown task type {task_type}"}
-
-        # Send the result back to the master
-        response = json.dumps({"result": result})
-        conn.sendall(response.encode('utf-8'))
-        conn.close()
-
-    def store_data(self, data_key, data):
-        # Simulate storing data locally
-        self.local_data_store[data_key] = data
-        print(f"Data stored for key {data_key}")
-        return {"status": "success", "message": f"Data stored for key {data_key}"}
-
-    def retrieve_data(self, data_key):
-        # Simulate retrieving data from local storage
-        data = self.local_data_store.get(data_key, None)
-        if data is not None:
-            print(f"Data retrieved for key {data_key}")
-            return {"status": "success", "data": data}
-        else:
-            print(f"No data found for key {data_key}")
-            return {"status": "error", "message": "Data not found"}

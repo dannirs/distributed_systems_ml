@@ -5,13 +5,6 @@
             "key": "username.csv"
         },
         "payload": ""
-    },
-    {
-        "method": "send_data",
-        "header_list": {
-            "key": "key1"
-        },
-        "payload": "value1"
     }
 ]
 

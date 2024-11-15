@@ -5,19 +5,22 @@ import json
 from handlers import write_to_file
 import random
 import time
+from TaskManager import TaskManager
 
 class WorkerClient:
-    def __init__(self, master_ip, master_port, ip, port):
+    def __init__(self, master_ip, master_port, server_ip, server_port, ip, port):
         self.master_ip = master_ip
         self.master_port = master_port
+        self.default_server_ip = server_ip
+        self.default_server_port = server_port
         self.ip = ip
         self.port = port
         self.active = True
         self.request_params = None
+        self.task_manager = TaskManager(self)
+        self.start_listening()
 
     def send_message(self, s, request_params):
-        print("In send_message")
-        print(request_params)
         jsonrpc = "2.0"
         id = random.randint(1, 40000)
         if "payload" not in request_params["params"] or not request_params["params"]["payload"]:
@@ -35,7 +38,6 @@ class WorkerClient:
                         payload=payload
                     )
         headers = message.process_headers(msg)
-        print(headers)
         request =   {
                         "jsonrpc": jsonrpc,
                         "method": request_params["method"],
@@ -60,7 +62,6 @@ class WorkerClient:
         return
 
     def check_response(self, response_data):
-        print("response: ", response_data)
         if response_data["result"]["status"] != 200: 
             print("Request failed.")
             return False
@@ -96,10 +97,9 @@ class WorkerClient:
                     print("Failed to send heartbeat: Master not reachable")
             time.sleep(10)  # Wait 5 seconds before sending the next heartbeat
         
-    def retrieve_data_location(self, s, key=None):
-        # Retrieve data location from the master
-        # with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        #     s.connect((self.master_ip, self.master_port))
+    def retrieve_data_location(self, task_data, key=None):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((self.master_ip, self.master_port))
         request = {
             "jsonrpc": "2.0",
             "method": "get_data_location",
@@ -113,79 +113,78 @@ class WorkerClient:
         if "result" in response_data:
             location = response_data["result"]
             print(f"Data '{key}' is located at worker {location}")
-            self.request_params["params"]["header_list"]["destination_port"] = location
-            self.connect_to_data_server(self.request_params)
+            self.connect_to_data_server(location, task_data)
         else:
             print(f"Data '{key}' not found")
             return None
 
     def start_listening(self):
+        
         # Start heartbeat in a separate thread
         heartbeat_thread = threading.Thread(target=self.send_heartbeat, daemon=True)
         heartbeat_thread.start()
 
-        # Start listening for task assignments from the master
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-            server_socket.bind((self.ip, self.port))
-            server_socket.listen(5)
-            print(f"Worker {self.ip}:{self.port} listening for tasks")
-            while self.active:
-                conn, addr = server_socket.accept()
-                # Start a new thread to handle each incoming task request
-                task_thread = threading.Thread(target=self.handle_task, args=(conn,))
-                task_thread.start()
-
-    def handle_task(self, conn):
-        # Receive and process a task from the master
-        request = conn.recv(1024).decode('utf-8')
-        task_data = json.loads(request)
+        # # Start listening for task assignments from the master
+        # with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+        #     server_socket.bind((self.ip, self.port))
+        #     server_socket.listen(5)
+        #     print(f"Worker {self.ip}:{self.port} listening for tasks")
+        #     while self.active:
+        #         conn, addr = server_socket.accept()
+        #         # Start a new thread to handle each incoming task request
+        #         task_thread = threading.Thread(target=self.handle_task, args=(conn,))
+        #         task_thread.start()
+    
+    def handle_task(self, task_data):
         print(f"Received task: {task_data}")
 
         try:
             if task_data["params"]["method"] == "retrieve_data":
-                self.retrieve_data_location(conn, task_data["params"]["header_list"]["key"])
+                self.retrieve_data_location(task_data, task_data["params"]["header_list"]["key"])
             else: 
-                self.connect_to_data_server(conn, task_data)
-            # self.send_message(conn, task_data)
-            # response = conn.recv(1024).decode('utf-8')
-            # response_data = json.loads(response)
-            # task_status = self.check_response(response_data)
-            # self.task_complete(task_status, task_data["params"]["job_id"], task_data["params"]["task_id"])
+                location = (self.default_server_ip, self.default_server_port)
+                self.connect_to_data_server(location, task_data)
         finally:
             # Set active to False to stop the heartbeat thread when main tasks are done
             self.active = False
             print("Worker has stopped; heartbeats will cease.")
-            conn.close()
+            # conn.close()
+
+    # def handle_task(self, conn):
+    #     # Receive and process a task from the master
+    #     # request = conn.recv(1024).decode('utf-8')
+    #     # task_data = json.loads(request)
+    #     print(f"Received task: {task_data}")
+
+    #     try:
+    #         if task_data["params"]["method"] == "retrieve_data":
+    #             self.retrieve_data_location(conn, task_data["params"]["header_list"]["key"])
+    #         else: 
+    #             self.connect_to_data_server(conn, task_data)
+    #         # self.send_message(conn, task_data)
+    #         # response = conn.recv(1024).decode('utf-8')
+    #         # response_data = json.loads(response)
+    #         # task_status = self.check_response(response_data)
+    #         # self.task_complete(task_status, task_data["params"]["job_id"], task_data["params"]["task_id"])
+    #     finally:
+    #         # Set active to False to stop the heartbeat thread when main tasks are done
+    #         self.active = False
+    #         print("Worker has stopped; heartbeats will cease.")
+    #         conn.close()
             
-    def connect_to_data_server(self, conn, task_data):
+    def connect_to_data_server(self, location, task_data):
         # Connect to the data server at data_location to retrieve or store data
-        destination_port = (task_data["params"]["header_list"]["destination_port"][0], task_data["params"]["header_list"]["destination_port"][1])
-        print(destination_port)
+        print("Task Data data server: ", task_data)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect(destination_port)
+            s.connect(location)
             self.send_message(s, task_data)
             response = s.recv(1024).decode('utf-8')
+            print("Response: ", response)
             response_data = json.loads(response)
+            print("Response JSON: ", response_data)
             task_status = self.check_response(response_data)
-            s.close()
-            self.task_complete(conn, task_status, task_data)
-
-    def task_complete(self, conn, task_status, task_data):
-        # with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        #     s.connect((self.master_ip, self.master_port))
-        if task_status: 
-            status = "Succeed"
-        else:
-            status = "Fail"
-        response = {
-            "jsonrpc": "2.0",
-            "method": task_data["method"],
-            "params": {"job_id": task_data["params"]["job_id"], "task_id": task_data["params"]["task_id"], "status": status},
-            "id": 2
-        }
-        print(response)
-        conn.sendall(json.dumps(response).encode('utf-8'))
-        time.sleep(0.1)
+            s.close() 
+            self.task_manager.task_complete(task_status, task_data)
 
     def test_multiple_clients(self):
         with open('test_input.json', 'r') as file:

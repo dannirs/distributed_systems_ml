@@ -25,7 +25,6 @@ class message:
             raise ValueError("Missing parameters for request")
         if not self.header_list["key"]:
             raise ValueError("Missing parameters for request")
-        print(self.payload)
         self.header_list["status"] = None
         self.header_list["file_path"] = ""
         if self.payload: 

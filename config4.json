@@ -1,0 +1,7 @@
+[
+    {
+        "is_master": true,
+        "ip": "localhost",
+        "port": 5678
+    }
+]
