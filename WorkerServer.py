@@ -7,64 +7,54 @@ from jsonrpc import dispatcher, JSONRPCResponseManager
 import time
 import random
 
-# Node:
-# -Splits job into tasks
-# -Splits large file into chunks (check through the tasks to see which files need to be split)
-# -Get available workers from MasterNode
-# -Send split file 
-# -User inputs command line arguments (replaces job.json file)
-# MasterNode: 
-# -Add jsonrpc
-# -Add a datamanager which stores where each piece of the same file has been stored
-# DataManager:
-# -Stores files as (key: [(file_name, addr), (file_name,addr)])
-# -Name of file is written as: data.txt ---> data.txt1, data.txt2, data.txt3
-# JobManager:
-# -Add jsonrpc
-# -Send task directly to taskmanager instead of client
-# -If no task progress message received, JobManager sends an instruction to kill the task and restarts it on a different client
-# -When the task is complete, JobManager removes it from the queue
-# -When job is complete, JobManager reports completion to UserClient
-# -Tasks run in parallel, no dependencies
-# TaskManager:
-# -Add jsonrpc
-# -Sends heartbeat about the task to JobManager (still in progress message)
-# -Reports when the task is complete
-# Worker:
-# -Is a separate class that contains self.server and self.clients 
-# -When the worker node is initialized, the server is connected to the master and listens for requests
-# -When the server gets a task, it starts up the client and sends the task
-# Client:
-# -Calls DataManager in MasterNode to get server location and then connects to correct server
+# write a script so that instead of the workers being started by MasterNode, use the script to start
+# the workers when the configs are located in different directories. Configuration file
+# names should be the same.
+# dir1 - node1
+# dir2 - node2
+# dir5 - program files
+# script, run with bash so I don't have to type the command line arguments every time
+# MapReduce:
+# create an interface to the map phase, reduce phase
+# rpc call starting from userclient, sending instruction to masternode, masternode
+# decomposes instruction to subtask instructions and distributes chunks to worker nodes
+# worker node then runs the map call on the data
+# at the end, the results of the map should be saved to a file, locally on the worker node
+# one worker node probably contains several data chunks; each chunk produces 1 result
+# the result is stored on the worker node's local storage
+# data_registry - location of the files/keys itself 
+# mapreduce_registry - location of the mapreduce computation
+# mapreduce_datastore - stores computation itself
+# taskID: {orig_file1: [chunk1comp, chunk2comp], orig_file2: [chunk1comp, chunk2comp]}
+# reduce phase:
+# do all of the reduce computation on only 1 node - simple implementation 
+# JobManager picks 1 worker as the worker responsible for the reduce tasks
+# JobManager sends instructions to all worker nodes to have them send their map computations
+# to the target node 
+# JobManager can send an instruction to each worker node to have them send their map
+# computation directly to the target node, or MasterNode sends an instruction to the
+# target node containing information on location of each map computation, and the target
+# node uses the information to get files from the worker node. This can be done in parallel
+# or in sequence
+# depends which performance is better
+# test using data from hadoop, etc. 
+# tree: 2    tree: 3
+# tree: 5
+# only 1 target node, so we skip shuffle 
+# after the reduce task, the result is stored locally on the target node
+# the location of the result is sent to MasterNode's DataManager
+# for now implement 1 phase mapreduce, can also implement multiple phase mapreduce later
+# k-means is multiple mapreduce
+# test mapreduce procedure using multiple nodes, use simple word count example and other examples
+# consider fault tolerance; client is not available during map --> rerun task 
+# server not available and data is lost --> return all tasks on that node
+# can create a replica of each data file/computation chunk and store it on 3 worker nodes (optional implementation, don't have to do it right now)
 
-# JobManager sends RPC instruction to taskmanager and taskmanager executes the instruction
-# JobManager, MasterNode, etc. should all use jsonrpc
-# Add periodic reporting of the task (still in progress message)
-# If no heartbeat received, JobManager sends another instruction to kill the task and restart on a
-# different client
-# TaskManager - reports on task progress, reports when task complete
-# MasterNode has a DataClient/Manager --> data can be split into many chunks, it stores where
-# each piece of the data is stored (key: [(file_name, addr), (file_name,addr)])
-# (ip, port)
-# name of file when data is split into chunks:
-# data.txt ---> data.txt1, data.txt2, data.txt3
-# userclient splits large file into chunks and sends to available workers (this can also be done by 
-# jobmanager), gets available workers from 
-# masternode; userclient checks through all the tasks to see which files need to be split
-# WorkerNode contains a data storage (data source) that holds data locally  
-# client task to retrieve data --> call datamanager in masternode to get server location --> 
-# connect to the correct server after getting response (server = worker, client = client)
-# job = task1, task2, task3 (tasks should run in parallel)
-# No interdependencies between tasks in the same job
-# map phase = 1 job, reduce phase = another job
-# UserClient - replaces the job.json file, the user inputs command line arguments
-# change Node class to UserClient
-# Worker node --> self.server, self.clients
-# worker node is initialized, server is connected to master and listens for requests, when the server
-# gets a task, 
-# start with 3 worker nodes, each node is in its own directory, 1 masternode
-# each worker node contains 1 server, any number of clients (1 or more)
-
+# later on, linear regression can be done in just 1 phase
+# ML program 
+# Test with the actual data
+# Deploy on cloud (can test it out if I have time) --> simple way is to need 4 images, 1 for each node, just run each container image
+# a better way is to create 1 image, and run 4 containers, but each container is different (needs to be configured)
 
 class FileService:
     def __init__(self, server):
