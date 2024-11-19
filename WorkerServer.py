@@ -161,7 +161,7 @@ class FileService:
             print("Data location sent:", response)
 
     @dispatcher.add_method
-    def send_task_to_client(self, client_address, task_data):
+    def send_task_to_client(self, client_address=None, task_data=None):
         """
         Handles task requests from the JobManager.
         """
@@ -192,6 +192,7 @@ class WorkerServer:
         # RPC can access the server's local cache. send_data() and retrieve_data are the 2 methods that the RPC
         # can call. 
         try:
+            method = ""
             file_service = FileService(self)
             dispatcher["send_data"] = file_service.send_data
             dispatcher["retrieve_data"] = file_service.retrieve_data
@@ -203,12 +204,25 @@ class WorkerServer:
             # both packets, or the server may still be waiting for the payload to arrive. This is handled by using the "jsonrpc:" 
             # field as the delimiter between packets. 
             request = conn.recv(1024).decode('utf-8')
+            print("From client: ", request)
             if not request:
                 return False
             print("Server received client's request in handle_client().")
-            json_params = json.loads(request)
-            print("Server got request: ", json_params)
-            if json_params["method"] != "send_task_to_client":
+            try:
+                # Try parsing the entire string as one dictionary
+                parsed = json.loads(request)
+                print(type(parsed["params"]))
+                if isinstance(parsed, dict):
+                    method = parsed["method"]
+                    print("method1: ", method)
+                else: 
+                    dicts = [json.loads(part) for part in parsed.split("}{")]
+                    method = dicts[0]["method"]
+                    print("method2: ", method)
+            except json.JSONDecodeError as e:
+                print(f"ERROR: Invalid JSON string: {e}")
+                pass
+            if not method or method != "send_task_to_client":
                 marker = "{\"jsonrpc\":"
                 marker_index = request.index(marker)
                 next_marker_index = request.find(marker, marker_index + len(marker))
@@ -235,11 +249,28 @@ class WorkerServer:
                     json_params['params'].update(json_payload['params'])
 
                 request = json.dumps(json_params)
+            if isinstance(request, dict):
+                print("DEBUG: Request is a dictionary. Serializing to JSON string.")
+                request = json.dumps(request)
+            
+            # If the request is a string, ensure it's valid JSON
+            elif isinstance(request, str):
+                try:
+                    # Attempt to parse the string as JSON to validate it
+                    parsed_request = json.loads(request)
+                    print("DEBUG: Request is a valid JSON string.")
+                except json.JSONDecodeError as e:
+                    print(f"ERROR: Invalid JSON string: {e}")
+                    return {"error": {"code": -32600, "message": "Invalid Request"}, "id": None, "jsonrpc": "2.0"}
+
             # The server then calls the RPC to execute the correct method. The RPC will also create
             # a response message to send back to the client, and the server will send this message.
             # In order to ensure that the client receives the response before the connection is closed,
             # a brief wait time is added before the server closes the connection.
+            
+            # request = json.dumps(request)
             response = JSONRPCResponseManager.handle(request, dispatcher)
+            print("response: ", response.json)
             conn.sendall(response.json.encode('utf-8'))
             print("Server generated response.")
             time.sleep(0.1)

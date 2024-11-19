@@ -101,7 +101,9 @@ class MasterNode:
     def handle_connection(self, conn):
         # Process incoming connections (either from a worker or a client)
         request = conn.recv(1024).decode('utf-8')
+        print("master got request: ", request)
         request_data = json.loads(request)
+        print(request_data.get("method"))
 
         # Dispatch request based on the specified method
         method = request_data.get("method")

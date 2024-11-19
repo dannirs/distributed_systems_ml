@@ -72,4 +72,5 @@ if __name__ == '__main__':
     # time.sleep(0.1)
     # Now, you can call send_job without waiting for the server to finish
     node.handle_job_submission("job.json")
+    node.handle_job_submission("job2.json")
 

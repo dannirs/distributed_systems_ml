@@ -1,17 +1,17 @@
 [
     {
-        "method": "send_data",
+        "method": "retrieve_data",
         "header_list": {
             "key": "username.csv"
         },
         "payload": ""
-    }, 
+    },
     {
-        "method": "send_data",
+        "method": "retrieve_data",
         "header_list": {
             "key": "key1"
         },
-        "payload": "value"
+        "payload": ""
     }
 ]
 

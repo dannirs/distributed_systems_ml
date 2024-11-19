@@ -6,6 +6,7 @@ from handlers import write_to_file
 import random
 import time
 from TaskManager import TaskManager
+import struct
 
 class WorkerClient:
     def __init__(self, master_ip, master_port, server_ip, server_port, ip, port):
@@ -21,6 +22,7 @@ class WorkerClient:
         self.start_listening()
 
     def send_message(self, s, request_params):
+        print("In send_message")
         jsonrpc = "2.0"
         id = random.randint(1, 40000)
         if "payload" not in request_params["params"] or not request_params["params"]["payload"]:
@@ -46,6 +48,9 @@ class WorkerClient:
                     }
 
         packet = json.dumps(request)
+        # packet_bytes = packet.encode('utf-8')
+        # message_length = len(packet_bytes)
+        # s.sendall(struct.pack('>I', message_length) + packet_bytes)
         s.sendall(packet.encode('utf-8'))
 
         if request["params"]["payload_type"] == 2:
@@ -62,6 +67,7 @@ class WorkerClient:
         return
 
     def check_response(self, response_data):
+        print(response_data)
         if response_data["result"]["status"] != 200: 
             print("Request failed.")
             return False
@@ -98,25 +104,33 @@ class WorkerClient:
             time.sleep(10)  # Wait 5 seconds before sending the next heartbeat
         
     def retrieve_data_location(self, task_data, key=None):
+        print(self.master_ip)
+        print(self.master_port)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((self.master_ip, self.master_port))
-        request = {
-            "jsonrpc": "2.0",
-            "method": "get_data_location",
-            "params": {"key": key},
-            "id": 2
-        }
-        s.sendall(json.dumps(request).encode('utf-8'))
-        response = s.recv(1024).decode('utf-8')
-        response_data = json.loads(response)
-        # Parse the response
-        if "result" in response_data:
-            location = response_data["result"]
-            print(f"Data '{key}' is located at worker {location}")
-            self.connect_to_data_server(location, task_data)
-        else:
-            print(f"Data '{key}' not found")
-            return None
+            request = {
+                "jsonrpc": "2.0",
+                "method": "get_data_location",
+                "params": {"key": key},
+                "id": 2
+            }
+            print(request)
+            print(type(request))
+            json_request = json.dumps(request).encode('utf-8')
+            print(json_request)
+            print((type(json_request)))
+            print(f"DEBUG: Is socket open? {s.fileno() != -1}")
+            s.sendall(json_request)
+            response = s.recv(1024).decode('utf-8')
+            response_data = json.loads(response)
+            # Parse the response
+            if "result" in response_data:
+                location = response_data["result"]
+                print(f"Data '{key}' is located at worker {location}")
+                self.connect_to_data_server(location, task_data)
+            else:
+                print(f"Data '{key}' not found")
+                return None
 
     def start_listening(self):
         
@@ -176,7 +190,7 @@ class WorkerClient:
         # Connect to the data server at data_location to retrieve or store data
         print("Task Data data server: ", task_data)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect(location)
+            s.connect((location[0], location[1]))
             self.send_message(s, task_data)
             response = s.recv(1024).decode('utf-8')
             print("Response: ", response)
