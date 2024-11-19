@@ -4,6 +4,7 @@ import threading
 import time
 import random
 import os
+import argparse
 
 class UserClient:
     def __init__(self, config_files):
@@ -31,14 +32,25 @@ class UserClient:
                 print(f"Error processing {config_file}: {e}")
 
     def handle_job_submission(self, job_file):
-        print("Handling job submission")
-        # Load job details from a JSON file
-        with open(job_file, 'r') as file:
-            job_data = json.load(file)
-        
-        # Generate tasks from the job and add them to the task queue
-        tasks = self.create_tasks(job_data)
-        print(f"Job received and tasks created and added to the queue.")
+        print(f"Processing job file: {job_file}")
+        try:
+            # Load job details from a JSON file
+            with open(job_file, 'r') as file:
+                job_data = json.load(file)
+            
+            # Generate tasks from the job and add them to the task queue
+            tasks = self.create_tasks(job_data)
+            print(f"Job from {job_file} received and tasks created and added to the queue.")
+            self.send_job(tasks)
+        except Exception as e:
+            print(f"Error processing job file {job_file}: {e}")
+
+    def handle_command_line_job(self, tasks):
+        """
+        Process a job provided directly via command-line arguments.
+        """
+        tasks = self.create_tasks(tasks)
+        print("Job received from command-line arguments and tasks created.")
         self.send_job(tasks)
 
     def create_tasks(self, job_data):
@@ -46,12 +58,13 @@ class UserClient:
         job_id = random.randint(1, 40000)
         max_chunk_size = 10 * 1024 * 1024  # Example: 10 MB
 
-        for i, dictionary in enumerate(job_data):
+        for dictionary in job_data:
             method = dictionary.get("method")
             payload = dictionary.get("payload")
+            header_list = dictionary.get("header_list", {})
 
             if method == "send_file" and not payload:  # Check file size for send_file tasks
-                file_path = dictionary["header_list"].get("file_path")
+                file_path = header_list.get("file_path")
                 if not os.path.exists(file_path):
                     print(f"File not found: {file_path}")
                     continue
@@ -82,7 +95,7 @@ class UserClient:
                         "job_id": job_id,
                         "task_id": random.randint(1, 40000),
                         "method": method,
-                        "header_list": dictionary.get("header_list"),
+                        "header_list": header_list,
                         "payload": payload
                     }
                     tasks.append(task)
@@ -91,45 +104,56 @@ class UserClient:
                     "job_id": job_id,
                     "task_id": random.randint(1, 40000),
                     "method": method,
-                    "header_list": dictionary.get("header_list"),
+                    "header_list": header_list,
                     "payload": payload
                 }
                 tasks.append(task)
 
         return tasks
 
-    # def create_tasks(self, job_data):
-    #     tasks = []
-    #     job_id = random.randint(1, 40000)
-        
-    #     for i, dictionary in enumerate(job_data):
-    #         task = {
-    #             "job_id": job_id,
-    #             "task_id": random.randint(1, 40000),
-    #             "method": job_data[i]["method"],
-    #             "header_list": job_data[i]["header_list"],
-    #             "payload": job_data[i]["payload"]
-    #         }
-    #         tasks.append(task)
-    #     return tasks 
-    
+    def run_interactive_mode(self):
+        """
+        Run an interactive loop to accept and process jobs until the user exits.
+        """
+        print("UserClient is now running. Enter jobs interactively.")
+        print("Type 'exit' to close the UserClient.")
+
+        while True:
+            input_type = input("Enter 'file' for JSON job file, 'cmd' for command-line tasks, or 'exit' to quit: ").strip().lower()
+
+            if input_type == "exit":
+                print("Exiting UserClient.")
+                break
+            elif input_type == "file":
+                job_files = input("Enter the paths to JSON job files (comma-separated): ").strip().split(',')
+                for job_file in job_files:
+                    job_file = job_file.strip()
+                    if os.path.exists(job_file):
+                        self.handle_job_submission(job_file)
+                    else:
+                        print(f"Error: File '{job_file}' does not exist.")
+            elif input_type == "cmd":
+                tasks = []
+                while True:
+                    method = input("Enter the method (e.g., send_file, retrieve_data, or type 'done' to finish): ").strip()
+                    if method.lower() == 'done':
+                        break
+                    key = input("Enter the key (e.g., file name or identifier): ").strip()
+                    payload = input("Enter the payload (optional): ").strip() or None
+                    tasks.append({"method": method, "header_list": {"key": key}, "payload": payload})
+                self.handle_command_line_job(tasks)
+            else:
+                print("Invalid input. Please enter 'file', 'cmd', or 'exit'.")
+
     def send_job(self, tasks):
         self.master.send_job(tasks)
 
+
 if __name__ == '__main__':
-    # A server object is initialized, with a default host and port set. 
-    # The server listens for 5 threads at a time. The server remains open
-    # even after the connection with a client is terminated.
-    # When a client thread is connected, the server goes into the handle_client() method.
-    node = UserClient(["config1.json", "config4.json"])
+    parser = argparse.ArgumentParser(description="UserClient Job Submission")
+    parser.add_argument("--config_files", nargs="+", type=str, help="List of config files", required=True)
 
-    # Start the server in a separate thread
-    # server_thread = threading.Thread(target=node.start_server)
-    # server_thread.daemon = True  # Daemon thread will close automatically when main program exits
-    # server_thread.start()
-    # time.sleep(0.1)
-    # Now, you can call send_job without waiting for the server to finish
-    node.handle_job_submission("job.json")
-    time.sleep(3)
-    node.handle_job_submission("job2.json")
+    args = parser.parse_args()
 
+    node = UserClient(args.config_files)
+    node.run_interactive_mode()
