@@ -127,13 +127,12 @@ class WorkerClient:
             if "result" in response_data:
                 location = response_data["result"]
                 print(f"Data '{key}' is located at worker {location}")
-                self.connect_to_data_server(location, task_data)
+                self.connect_to_data_server(location[0][1], task_data)
             else:
                 print(f"Data '{key}' not found")
                 return None
 
     def start_listening(self):
-        
         # Start heartbeat in a separate thread
         heartbeat_thread = threading.Thread(target=self.send_heartbeat, daemon=True)
         heartbeat_thread.start()
@@ -190,6 +189,7 @@ class WorkerClient:
     def connect_to_data_server(self, location, task_data):
         # Connect to the data server at data_location to retrieve or store data
         print("Task Data data server: ", task_data)
+        print("location: ", location)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((location[0], location[1]))
             self.send_message(s, task_data)

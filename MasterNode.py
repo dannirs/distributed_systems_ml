@@ -6,6 +6,7 @@ from WorkerClient import WorkerClient
 from WorkerServer import WorkerServer
 import time
 from Worker import Worker
+from DataManager import DataManager
 
 class MasterNode:
     def __init__(self, config_files, ip="localhost", port=5678):
@@ -14,11 +15,12 @@ class MasterNode:
         self.server_registry = {}       # Track registered workers
         self.client_registry = {}
         self.client_to_server_registry = {}
-        self.data_registry = {}         # Track data location on workers
+        # self.data_registry = {}         # Track data location on workers
         self.job_manager = JobManager(self)  # JobManager for task distribution
         self.config_files = config_files
         self.heartbeat_timeout = 15
         self.inactive_workers = {}
+        self.data_manager = DataManager()
 
     def start_workers(self):
         """
@@ -167,19 +169,104 @@ class MasterNode:
                     print(f"Worker {worker_ip} marked as inactive (no heartbeat)")
             time.sleep(15)  # Check every 5 seconds
 
-    def get_data_location(self, conn, data_key):
-        # Retrieve the location of data based on data_key
-        worker_info = self.data_registry.get(data_key)
-        if worker_info:
-            response = {"jsonrpc": "2.0", "result": worker_info, "id": 3}
-        else:
-            response = {"jsonrpc": "2.0", "error": "Data not found", "id": 3}
+
+    def store_data_location(self, conn, original_file_name, client_address, chunked_file_name=None):
+        """
+        Delegate data storage to DataManager.
+        """
+        result = self.data_manager.store_data_location(
+            original_file_name,
+            client_address,
+            chunked_file_name
+        )
+        response = {"jsonrpc": "2.0", "result": result, "id": 3} if result == "Success" else {"jsonrpc": "2.0", "error": result, "id": 3}
         conn.sendall(json.dumps(response).encode('utf-8'))
 
-    def store_data_location(self, conn, data, address):
-        self.data_registry[data] = address
-        response = {"jsonrpc": "2.0", "result": "Success", "id": 3}
+    def get_data_location(self, conn, data_key):
+        """
+        Delegate data retrieval to DataManager.
+        """
+        result = self.data_manager.get_data_location(data_key)
+        response = {"jsonrpc": "2.0", "result": result, "id": 3} if isinstance(result, list) else {"jsonrpc": "2.0", "error": result, "id": 3}
         conn.sendall(json.dumps(response).encode('utf-8'))
+
+    # def get_data_location(self, conn, data_key):
+    #     # Retrieve the location of data based on data_key
+    #     print("Data registry: ", self.data_registry)
+    #     print("In get_data_location")
+    #     print("key: ", data_key)
+    #     worker_info = self.data_registry.get(data_key)
+    #     if worker_info:
+    #         response = {"jsonrpc": "2.0", "result": worker_info, "id": 3}
+    #     else:
+    #         response = {"jsonrpc": "2.0", "error": "Data not found", "id": 3}
+    #     conn.sendall(json.dumps(response).encode('utf-8'))
+
+    # def store_data_location(self, conn, original_file_name, client_address, chunked_file_name=None):
+    #     """
+    #     Stores the location of a file or its chunks.
+
+    #     :param conn: Connection to the client or worker
+    #     :param original_file_name: The name of the original file
+    #     :param client_address: The address of the client storing the file
+    #     :param chunked_file_name: The name of the chunked file (optional for non-chunked files)
+    #     """
+    #     print("In store_data_location")
+    #     print("orig: ", original_file_name)
+    #     print("addr: ", client_address)
+    #     print("chunks: ", chunked_file_name)
+    #     if original_file_name not in self.data_registry:
+    #         self.data_registry[original_file_name] = []
+
+    #     # Validate inputs
+    #     if not original_file_name or not client_address:
+    #         response = {"jsonrpc": "2.0", "error": "Missing required parameters", "id": 3}
+    #         conn.sendall(json.dumps(response).encode('utf-8'))
+    #         return
+
+    #     if chunked_file_name:
+    #         # Handle chunked files
+    #         base_name = original_file_name.rsplit('.', 1)[0]  # Remove file extension
+    #         try:
+    #             if "_part" in chunked_file_name and base_name in chunked_file_name:
+    #                 chunk_number = int(chunked_file_name.replace(base_name + "_part", "").rsplit('.', 1)[0])
+    #             else:
+    #                 raise ValueError(f"Invalid chunk name format: {chunked_file_name}")
+    #         except ValueError as e:
+    #             print(f"Error parsing chunk number: {e}")
+    #             response = {"jsonrpc": "2.0", "error": "Invalid chunk name format", "id": 3}
+    #             conn.sendall(json.dumps(response).encode('utf-8'))
+    #             return
+
+    #         # Insert chunk into the correct position
+    #         for idx, (existing_chunk, _) in enumerate(self.data_registry[original_file_name]):
+    #             existing_chunk_number = int(
+    #                 existing_chunk.replace(base_name + "_part", "").rsplit('.', 1)[0]
+    #             )
+    #             if chunk_number < existing_chunk_number:
+    #                 self.data_registry[original_file_name].insert(idx, (chunked_file_name, client_address))
+    #                 break
+    #         else:
+    #             self.data_registry[original_file_name].append((chunked_file_name, client_address))
+    #     else:
+    #         # Handle non-chunked files
+    #         if len(self.data_registry[original_file_name]) == 0:
+    #             # Directly store the file if no entries exist yet
+    #             self.data_registry[original_file_name].append((original_file_name, client_address))
+    #         else:
+    #             # If the file has been chunked before, raise a conflict
+    #             print(f"Conflict: {original_file_name} already has chunked entries.")
+    #             response = {"jsonrpc": "2.0", "error": f"Conflict: {original_file_name} has chunked entries.", "id": 3}
+    #             conn.sendall(json.dumps(response).encode('utf-8'))
+    #             return
+
+    #     response = {"jsonrpc": "2.0", "result": "Success", "id": 3}
+    #     conn.sendall(json.dumps(response).encode('utf-8'))
+
+    # def store_data_location(self, conn, data, address):
+    #     self.data_registry[data] = address
+    #     response = {"jsonrpc": "2.0", "result": "Success", "id": 3}
+    #     conn.sendall(json.dumps(response).encode('utf-8'))
 
     def send_job(self, job):
         self.job_manager.handle_job_submission(job)
