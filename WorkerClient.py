@@ -151,6 +151,7 @@ class WorkerClient:
     
     def handle_task(self, task_data):
         print(f"Received task: {task_data}")
+        self.task_manager.process_task(task_data)
 
         try:
             if task_data["params"]["method"] == "retrieve_data":

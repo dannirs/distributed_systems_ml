@@ -79,13 +79,15 @@ class JobManager:
         print("All tasks have been assigned.")
 
     def get_task_response(self, response):
-        self.master.client_registry[(response["client_addr"][0], response["client_addr"][1])]["task_status"] = False
-
+        print("task response: ", response)
+        self.master.client_registry[(response["params"]["client_addr"][0], response["params"]["client_addr"][1])]["task_status"] = False
         # self.master.client_registry[{response["client_addr"][0], response["client_addr"][1]}]["task_status"] = False
-        del self.task_pending_results[response["params"]["task_id"]]
         if response["params"]["status"] == "404":
-            self.task_queue.append(self.task_pending_results[response["params"]["task_id"]])
+            self.task_queue.append(self.tasks_pending_results[response["params"]["task_id"]])
             self.assign_tasks()
+        else: 
+            print("tasks pending results: ", self.tasks_pending_results)
+            del self.tasks_pending_results[response["params"]["task_id"]]
 
     # def handle_job_submission(self, job_file):
     #     for port in self.master.worker_registry: 

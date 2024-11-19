@@ -116,7 +116,7 @@ class MasterNode:
         elif method == "store_data_location":
             self.store_data_location(conn, request_data["params"]["key"], request_data["params"]["address"])
         elif method == "task_update":
-            self.job_manager.get_task_response(request_data["params"])
+            self.job_manager.get_task_response(request_data)
         conn.close()
 
     # def start_workers(self):
