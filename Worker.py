@@ -1,8 +1,3 @@
-import threading
-import socket
-import time
-import random
-import json
 from WorkerServer import WorkerServer
 from WorkerClient import WorkerClient
 
@@ -31,10 +26,6 @@ class Worker:
         print("Complete")
         return
 
-    # def start_client(self, addr, task):
-    #     threading.Thread(target=self.clients[addr].start_listening)
-    #     threading.Thread(target=self.clients[addr].task_manager.process_task, daemon=True, args=(task,)).start()
-    
     def check_available_clients(self):
         num_available = 0
         for i, dictionary in enumerate(self.clients):
