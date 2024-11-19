@@ -6,6 +6,7 @@ from handlers import write_to_file
 import random
 import time
 from TaskManager import TaskManager
+from JSONRPCProxy import JSONRPCProxy
 
 class WorkerClient:
     def __init__(self, master_ip, master_port, server_ip, server_port, ip, port):
@@ -18,6 +19,8 @@ class WorkerClient:
         self.active = True
         self.request_params = None
         self.task_manager = TaskManager(self)
+        self.task_manager_proxy = JSONRPCProxy(self.task_manager.dispatcher, prefix="task")
+
         self.start_listening()
 
     def send_message(self, s, request_params):
@@ -83,22 +86,25 @@ class WorkerClient:
             return True
 
     def send_heartbeat(self):
-        while self.active: 
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                try:
-                    s.connect((self.master_ip, self.master_port))
+        while self.active:
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
                     heartbeat_data = json.dumps({
                         "jsonrpc": "2.0",
                         "method": "heartbeat",
-                        "params": {"worker_ip": self.ip, "worker_port": self.port},
+                        "params": {
+                            "worker_ip": self.ip,
+                            "worker_port": self.port
+                        },
                         "id": 1
                     })
-                    s.sendall(heartbeat_data.encode('utf-8'))
-                    print(f"Heartbeat sent from {self.ip}:{self.port}")
-                except ConnectionRefusedError:
-                    print("Failed to send heartbeat: Master not reachable")
+                    udp_socket.sendto(heartbeat_data.encode('utf-8'), (self.master_ip, self.master_port))
+                    print(f"Heartbeat sent via UDP from {self.ip}:{self.port}")
+            except Exception as e:
+                print(f"Failed to send heartbeat via UDP: {e}")
+
             time.sleep(10)  
-        
+
     def retrieve_data_location(self, task_data, key=None):
         print(self.master_ip)
         print(self.master_port)
@@ -133,7 +139,7 @@ class WorkerClient:
     
     def handle_task(self, task_data):
         print(f"Received task: {task_data}")
-        self.task_manager.process_task(task_data)
+        self.task_manager_proxy.process_task(task=task_data)
 
         try:
             if task_data["params"]["method"] == "retrieve_data":
@@ -157,7 +163,7 @@ class WorkerClient:
             print("Response JSON: ", response_data)
             task_status = self.check_response(response_data)
             s.close() 
-            self.task_manager.task_complete(task_status, task_data)
+            self.task_manager_proxy.task_complete(task_status=task_status, task_data=task_data)
 
     def test_multiple_clients(self):
         with open('test_input.json', 'r') as file:
