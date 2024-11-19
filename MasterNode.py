@@ -30,6 +30,7 @@ class MasterNode:
         self.dispatcher.register_method("job.assign_tasks", self.job_manager.assign_tasks)
         self.dispatcher.register_method("data.get_data_location", self.data_manager.get_data_location)
         self.dispatcher.register_method("data.store_data_location", self.data_manager.store_data_location)
+        self.dispatcher.register_method("master.receive_heartbeat", self.receive_heartbeat)
 
 
         # Wrap managers with JSONRPCProxy
@@ -75,23 +76,29 @@ class MasterNode:
         threading.Thread(target=server_thread, daemon=True).start()
 
     def handle_connection(self, conn):
-        request = conn.recv(1024).decode('utf-8')
-        print("master got request: ", request)
-        request_data = json.loads(request)
-        print(request_data.get("method"))
+        """
+        Handle incoming requests and route them through JSONRPCDispatcher.
+        """
+        try:
+            request = conn.recv(1024).decode('utf-8')
+            print(f"MasterNode received request: {request}")
 
-        method = request_data.get("method")
-        if method == "heartbeat":
-            self.receive_heartbeat(request_data["params"])
-        elif method == "submit_job":
-            self.job_manager_proxy.submit_job(job=request_data["params"])
-        elif method == "get_data_location":
-            self.get_data_location(conn, request_data["params"]["key"])
-        elif method == "store_data_location":
-            self.store_data_location(conn, request_data["params"]["key"], request_data["params"]["address"])
-        elif method == "task_update":
-            self.job_manager_proxy.get_task_response(response=request_data)
-        conn.close()
+            # Dispatch the JSON-RPC request
+            response = self.dispatcher.handle_request(request)
+
+            # Send the response back to the client
+            conn.sendall(response.encode('utf-8'))
+        except Exception as e:
+            print(f"Error handling connection: {e}")
+            error_response = json.dumps({
+                "jsonrpc": "2.0",
+                "error": {"code": -32603, "message": str(e)},
+                "id": None
+            })
+            conn.sendall(error_response.encode('utf-8'))
+        finally:
+            conn.close()
+
 
     def receive_heartbeat(self, params):
         worker_ip = params["worker_ip"]

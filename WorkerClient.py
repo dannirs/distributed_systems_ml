@@ -106,8 +106,8 @@ class WorkerClient:
             s.connect((self.master_ip, self.master_port))
             request = {
                 "jsonrpc": "2.0",
-                "method": "get_data_location",
-                "params": {"key": key},
+                "method": "data.get_data_location",
+                "params": {"original_file_name": key},
                 "id": 2
             }
             print(request)

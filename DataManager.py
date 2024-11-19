@@ -29,10 +29,11 @@ class DataManager:
                 self.data_registry[original_file_name].append((original_file_name, client_address))
             else:
                 return f"Conflict: {original_file_name} already has chunked entries."
-
+        print("Stored data: ", self.data_registry)
         return "Success"
 
     def get_data_location(self, original_file_name):
+        print("current data locations: ", self.data_registry)
         if original_file_name in self.data_registry:
             return self.data_registry[original_file_name]
         return f"Error: {original_file_name} not found."

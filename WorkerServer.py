@@ -127,10 +127,10 @@ class FileService:
             s.connect((self.server.master_ip, self.server.master_port))
             request = {
                 "jsonrpc": "2.0",
-                "method": "store_data_location",
+                "method": "data.store_data_location",
                 "params": {
-                    "key": key,
-                    "address": (self.server.ip, self.server.port)
+                    "original_file_name": key,
+                    "client_address": (self.server.ip, self.server.port)
                 },
                 "id": 1
             }
