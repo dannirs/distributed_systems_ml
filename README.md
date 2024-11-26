@@ -62,3 +62,73 @@ TaskManager:
 -Notifies the MasterNode if the worker is currently busy 
 -Receive and execute tasks by calling the command on the workernode
 -Report when the task is complete
+
+MapReduce:
+UserClient
+-Initiates an RPC call to the MasterNode with MapReduce instructions
+-Mapreduce instruction can be used with many files at once
+
+MasterNode
+-Decomposes data into chunks 
+-Selects a node to be the reduce node
+-Sends map tasks to worker clients
+-Collects results from client
+-Reduce node is either sent the results by each client node, or it retrieves the results itself
+
+DataManager
+-Execute map phase and reduce phase for data chunks 
+-Saves results to file
+
+JobManager
+
+TaskManager
+
+WorkerNode
+
+WorkerServer
+
+WorkerClient
+
+Steps:
+1. Add a new request type for mapreduce
+2. When the userclient sees this task, it iterates through the files. For all files that are too big, it chunks these files and creates a new separate task. The instruction should include the associated task and sequence #, as well as total size? When chunking the file, a new file is created for each chunk
+3. JobManager sees that a mapreduce task has been received. Jobmanager will randomly select a client for the reduce task
+4. JobManager sends tasks to clients; each task contains 1 chunk
+5. Clients run the map phase, which involves aggregating 
+
+Map phase:
+-Convert categorical variables into ordinal encodings
+-Calculate averages for player stats 
+-Create new derived features like points per minute and rebounds per minute
+-Summarize team-level stats for each chunk (sum of points, rebounds, etc.)
+
+Reduce phase:
+-Aggregate new data and compute final averages
+
+-team, position: list of players
+-player:
+    -salary
+    -points (average per minute)
+    -rebounds (average per minute)
+    -assists (average per minute)
+    -turnovers (average per minute)
+    -minutes played (average per game)
+    -games played (total)
+    -free throw percentage (overall average)
+    -field goal percentage (overall average)
+    -three-point percentage (overall average)
+    -injury status
+
+map:
+-For two columns, calculate the total and count, and then use this to calculate the average (ex. point per minute). Create a new column to put this data in
+-For one column, calculate the total and count, and then calculate the overall average
+-For one column, calculate the total sum
+-Convert categorical variables into ordinal encodings
+-Extract the team-player position and the name of the player
+-If a value is missing, do not count it?
+
+reduce:
+-Generate player key-value aggregations, where each player has their total stats (for example, calculate total averages)
+-Generate team-position aggregations, where each team-position key is paired with a list of the players in that team
+
+    

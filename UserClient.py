@@ -52,50 +52,34 @@ class UserClient:
     def create_tasks(self, job_data):
         tasks = []
         job_id = random.randint(1, 40000)
-        max_chunk_size = 10 * 1024 * 1024  
+        max_chunk_size = 10 * 1024 * 1024  # Chunk size in bytes (10 MB)
 
         for dictionary in job_data:
             method = dictionary.get("method")
             payload = dictionary.get("payload")
             header_list = dictionary.get("header_list", {})
+            file_path = header_list.get("key")
+            file_paths = header_list.get("keys", [])  # For mapreduce tasks
 
-            if method == "send_file" and not payload:  
-                file_path = header_list.get("file_path")
-                if not os.path.exists(file_path):
-                    print(f"File not found: {file_path}")
-                    continue
+            # Handle send_data
+            if method == "send_data":
+                # if file_path and not os.path.exists(file_path):
+                #     print(f"Invalid or missing file path: {file_path}")
+                #     continue
 
-                file_size = os.path.getsize(file_path)
-                if file_size > max_chunk_size:
-                    print(f"File too large, splitting: {file_path}")
-                    base_name, ext = os.path.splitext(file_path)  
-                    num_chunks = -(-file_size // max_chunk_size)  
+                # Single task for sending the file
+                task = {
+                    "job_id": job_id,
+                    "task_id": random.randint(1, 40000),
+                    "method": method,
+                    "header_list": {"key": file_path},
+                    "payload": payload
+                }
+                tasks.append(task)
 
-                    with open(file_path, 'rb') as f:
-                        for chunk_id in range(num_chunks):
-                            chunk_data = f.read(max_chunk_size)
-                            chunk_file_name = f"{base_name}_part{chunk_id + 1}{ext}" 
-                            with open(chunk_file_name, 'wb') as chunk_file:
-                                chunk_file.write(chunk_data)
-
-                            task = {
-                                "job_id": job_id,
-                                "task_id": random.randint(1, 40000),
-                                "method": method,
-                                "header_list": {"original_file_name": file_path, "file_path": chunk_file_name},
-                                "payload": None
-                            }
-                            tasks.append(task)
-                else:
-                    task = {
-                        "job_id": job_id,
-                        "task_id": random.randint(1, 40000),
-                        "method": method,
-                        "header_list": header_list,
-                        "payload": payload
-                    }
-                    tasks.append(task)
-            else:
+            # Handle retrieve_data
+            elif method == "retrieve_data":
+                # Single task for retrieving the file
                 task = {
                     "job_id": job_id,
                     "task_id": random.randint(1, 40000),
@@ -105,7 +89,227 @@ class UserClient:
                 }
                 tasks.append(task)
 
+            # Handle mapreduce
+            elif method == "mapreduce":
+                if not all(os.path.exists(fp) for fp in file_paths):
+                    print(f"One or more files in file_paths are invalid: {file_paths}")
+                    continue
+
+                # Prepare for Map tasks and Reduce task
+                map_results = []  # To store map result paths for reduce
+
+                for file_path in file_paths:
+                    file_size = os.path.getsize(file_path)
+
+                    if file_size > max_chunk_size:  # Chunk large files
+                        print(f"Chunking large file for mapreduce: {file_path}")
+                        base_name, ext = os.path.splitext(file_path)
+                        num_chunks = -(-file_size // max_chunk_size)
+
+                        with open(file_path, 'rb') as f:
+                            for chunk_id in range(num_chunks):
+                                chunk_data = f.read(max_chunk_size)
+                                chunk_file_name = f"{base_name}_part{chunk_id + 1}{ext}"
+
+                                # Save the chunk locally
+                                with open(chunk_file_name, 'wb') as chunk_file:
+                                    chunk_file.write(chunk_data)
+
+                                # Create a Map task for each chunk
+                                tasks.append({
+                                    "job_id": job_id,
+                                    "task_id": random.randint(1, 40000),
+                                    "method": "map",
+                                    "header_list": {"original_file": file_path, "key": chunk_file_name},
+                                    "payload": None
+                                })
+                                map_results.append(chunk_file_name)  # Add chunk name to map results
+                    else:
+                        # Single Map task for small files
+                        tasks.append({
+                            "job_id": job_id,
+                            "task_id": random.randint(1, 40000),
+                            "method": "map",
+                            "header_list": {"key": file_path},
+                            "payload": None
+                        })
+                        map_results.append(file_path)  # Add original file name to map results
+
+                # Create Reduce task with populated map results
+                reduce_task = {
+                    "job_id": job_id,
+                    "task_id": random.randint(1, 40000),
+                    "method": "reduce",
+                    "header_list": {"map_results": map_results},  # Populate with map result paths
+                    "payload": None
+                }
+                tasks.append(reduce_task)
+
+            else:
+                print(f"Unsupported method: {method}")
+
         return tasks
+
+
+    # def create_tasks(self, job_data):
+    #     tasks = []
+    #     job_id = random.randint(1, 40000)
+    #     max_chunk_size = 10 * 1024 * 1024  # Chunk size in bytes (10 MB)
+
+    #     for dictionary in job_data:
+    #         method = dictionary.get("method")
+    #         payload = dictionary.get("payload")
+    #         header_list = dictionary.get("header_list", {})
+    #         file_path = header_list.get("key")
+    #         file_paths = header_list.get("keys", [])  # For mapreduce tasks
+
+    #         # Handle send_data
+    #         if method == "send_data":
+    #             if file_path and not os.path.exists(file_path):
+    #                 print(f"Invalid or missing file path: {file_path}")
+    #                 continue
+
+    #             # Single task for sending the file
+    #             task = {
+    #                 "job_id": job_id,
+    #                 "task_id": random.randint(1, 40000),
+    #                 "method": method,
+    #                 "header_list": {"file_path": file_path},
+    #                 "payload": payload
+    #             }
+    #             tasks.append(task)
+
+    #         # Handle retrieve_data
+    #         elif method == "retrieve_data":
+    #             # Single task for retrieving the file
+    #             task = {
+    #                 "job_id": job_id,
+    #                 "task_id": random.randint(1, 40000),
+    #                 "method": method,
+    #                 "header_list": header_list,
+    #                 "payload": payload
+    #             }
+    #             tasks.append(task)
+
+    #         # Handle mapreduce
+    #         elif method == "mapreduce":
+    #             if not all(os.path.exists(fp) for fp in file_paths):
+    #                 print(f"One or more files in file_paths are invalid: {file_paths}")
+    #                 continue
+
+    #             # Generate Map tasks
+    #             map_tasks = []
+    #             reduce_task = {
+    #                 "job_id": job_id,
+    #                 "task_id": random.randint(1, 40000),
+    #                 "method": "reduce",
+    #                 "header_list": {"map_results": []},  # To be populated later
+    #                 "payload": None
+    #             }
+
+    #             for file_path in file_paths:
+    #                 file_size = os.path.getsize(file_path)
+
+    #                 if file_size > max_chunk_size:  # Chunk large files
+    #                     print(f"Chunking large file for mapreduce: {file_path}")
+    #                     base_name, ext = os.path.splitext(file_path)
+    #                     num_chunks = -(-file_size // max_chunk_size)
+
+    #                     with open(file_path, 'rb') as f:
+    #                         for chunk_id in range(num_chunks):
+    #                             chunk_data = f.read(max_chunk_size)
+    #                             chunk_file_name = f"{base_name}_part{chunk_id + 1}{ext}"
+
+    #                             # Save the chunk locally
+    #                             with open(chunk_file_name, 'wb') as chunk_file:
+    #                                 chunk_file.write(chunk_data)
+
+    #                             # Create a Map task for each chunk
+    #                             map_tasks.append({
+    #                                 "job_id": job_id,
+    #                                 "task_id": random.randint(1, 40000),
+    #                                 "method": "map",
+    #                                 "header_list": {"original_file": file_path, "key": chunk_file_name},
+    #                                 "payload": None
+    #                             })
+    #                 else:
+    #                     # Single Map task for small files
+    #                     map_tasks.append({
+    #                         "job_id": job_id,
+    #                         "task_id": random.randint(1, 40000),
+    #                         "method": "map",
+    #                         "header_list": {"key": file_path},
+    #                         "payload": None
+    #                     })
+
+    #             # Add Map tasks and the Reduce task
+    #             tasks.extend(map_tasks)
+    #             tasks.append(reduce_task)
+
+    #         else:
+    #             print(f"Unsupported method: {method}")
+
+    #     return tasks
+
+
+
+    # def create_tasks(self, job_data):
+    #     tasks = []
+    #     job_id = random.randint(1, 40000)
+    #     max_chunk_size = 10 * 1024 * 1024  
+
+    #     for dictionary in job_data:
+    #         method = dictionary.get("method")
+    #         payload = dictionary.get("payload")
+    #         header_list = dictionary.get("header_list", {})
+
+    #         if method == "send_file" and not payload:  
+    #             file_path = header_list.get("file_path")
+    #             if not os.path.exists(file_path):
+    #                 print(f"File not found: {file_path}")
+    #                 continue
+
+    #             file_size = os.path.getsize(file_path)
+    #             if file_size > max_chunk_size:
+    #                 print(f"File too large, splitting: {file_path}")
+    #                 base_name, ext = os.path.splitext(file_path)  
+    #                 num_chunks = -(-file_size // max_chunk_size)  
+
+    #                 with open(file_path, 'rb') as f:
+    #                     for chunk_id in range(num_chunks):
+    #                         chunk_data = f.read(max_chunk_size)
+    #                         chunk_file_name = f"{base_name}_part{chunk_id + 1}{ext}" 
+    #                         with open(chunk_file_name, 'wb') as chunk_file:
+    #                             chunk_file.write(chunk_data)
+
+    #                         task = {
+    #                             "job_id": job_id,
+    #                             "task_id": random.randint(1, 40000),
+    #                             "method": method,
+    #                             "header_list": {"original_file_name": file_path, "file_path": chunk_file_name},
+    #                             "payload": None
+    #                         }
+    #                         tasks.append(task)
+    #             else:
+    #                 task = {
+    #                     "job_id": job_id,
+    #                     "task_id": random.randint(1, 40000),
+    #                     "method": method,
+    #                     "header_list": header_list,
+    #                     "payload": payload
+    #                 }
+    #                 tasks.append(task)
+    #         else:
+    #             task = {
+    #                 "job_id": job_id,
+    #                 "task_id": random.randint(1, 40000),
+    #                 "method": method,
+    #                 "header_list": header_list,
+    #                 "payload": payload
+    #             }
+    #             tasks.append(task)
+
+    #     return tasks
 
     def run_interactive_mode(self):
         print("UserClient is now running. Enter jobs interactively.")
@@ -128,7 +332,7 @@ class UserClient:
             elif input_type == "cmd":
                 tasks = []
                 while True:
-                    method = input("Enter the method (e.g., send_file, retrieve_data, or type 'done' to finish): ").strip()
+                    method = input("Enter the method (e.g., send_data, retrieve_data, map, reduce, or type 'done' to finish): ").strip()
                     if method.lower() == 'done':
                         break
                     key = input("Enter the key (e.g., file name or identifier): ").strip()

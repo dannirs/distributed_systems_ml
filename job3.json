@@ -1,0 +1,10 @@
+[
+    {
+        "method": "mapreduce",
+        "header_list": {
+            "keys": ["NBA-stats_2024.csv"]
+        },
+        "payload": ""
+    }
+]
+

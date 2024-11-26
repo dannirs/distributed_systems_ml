@@ -7,6 +7,7 @@ import random
 import time
 from TaskManager import TaskManager
 from JSONRPCProxy import JSONRPCProxy
+import os
 
 class WorkerClient:
     def __init__(self, master_ip, master_port, server_ip, server_port, ip, port):
@@ -34,6 +35,7 @@ class WorkerClient:
             payload = request_params["params"]["payload"]
             request_params["params"]["header_list"]["payload_type"] = 1
 
+        print("Request params: ", request_params)
         msg = message(
                         method=request_params["method"], 
                         source_port=s.getsockname(),
@@ -144,6 +146,8 @@ class WorkerClient:
         try:
             if task_data["params"]["method"] == "retrieve_data":
                 self.retrieve_data_location(task_data, task_data["params"]["header_list"]["key"])
+            elif task_data["params"]["method"] == "reduce":
+                self.handle_reduce_task(task_data)
             else: 
                 location = (self.default_server_ip, self.default_server_port)
                 self.connect_to_data_server(location, task_data)
@@ -164,6 +168,111 @@ class WorkerClient:
             task_status = self.check_response(response_data)
             s.close() 
             self.task_manager_proxy.task_complete(task_status=task_status, task_data=task_data)
+
+    def handle_reduce_task(self, task_data):
+        """
+        Process a Reduce task by retrieving map results and sending them to the Reduce Server.
+
+        Args:
+            task_data (dict): Task data for the Reduce phase.
+        """
+        print("Task data for Reduce:", task_data)
+        map_result_files = task_data["params"]["header_list"]["map_results"]  # List of files to process
+        reduce_server_location = (self.default_server_ip, self.default_server_port)  # Reduce server location
+
+        # Step 1: Retrieve map result locations from DataManager (via MasterNode)
+        map_result_locations = []
+        for map_result_file in map_result_files:
+            player_result_path = f"map_result_player_{os.path.basename(map_result_file)}.json"
+            team_result_path = f"map_result_team_{os.path.basename(map_result_file)}.json"
+            map_locations = self.retrieve_map_results(player_result_path)  # Retrieve from DataManager
+            map_result_locations.extend(map_locations)
+            map_locations = self.retrieve_map_results(team_result_path)  # Retrieve from DataManager
+            map_result_locations.extend(map_locations)
+
+
+        print(f"Map result locations: {map_result_locations}")
+
+        # Step 2: Collect map results from the retrieved locations
+        collected_map_results = self.collect_map_results(map_result_locations)
+
+        print(f"Collected Map results: {len(collected_map_results)} files")
+
+        # Step 3: Send the collected Map results to the Reduce WorkerServer
+        self.send_results_to_reduce_server(reduce_server_location, collected_map_results)
+        print("Reduce task has been successfully executed.")
+
+
+# WorkerClient.py
+
+    def collect_map_results(self, map_result_locations):
+        """
+        Connect to WorkerServers to retrieve all Map results.
+
+        Args:
+            map_result_locations (list): A list of dictionaries containing file_name and location
+                                        (e.g., [{"file_name": "file1map_1", "location": ("worker_ip", 8080)}])
+
+        Returns:
+            list: Collected Map results.
+        """
+        collected_results = []
+
+        for entry in map_result_locations:
+            print("entry: ", entry)
+            file_name = entry[0]
+            location = entry[1]
+
+            print(f"Fetching Map result from {location} for file {file_name}")
+
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    # Connect to the WorkerServer
+                    s.connect(tuple(location))
+
+                    # Send a retrieve_data request
+                    request = {
+                        "jsonrpc": "2.0",
+                        "method": "retrieve_data",
+                        "params": {"key": file_name},
+                        "id": 1
+                    }
+                    s.sendall(json.dumps(request).encode('utf-8'))
+
+                    # Receive and process the response
+                    response = json.loads(s.recv(4096).decode('utf-8'))
+                    if "result" in response and response["result"]:
+                        collected_results.append(response["result"])
+                        print(f"Successfully retrieved Map result for {file_name}")
+                    else:
+                        print(f"Error retrieving Map result for {file_name}: {response.get('error', 'Unknown error')}")
+
+                except Exception as e:
+                    print(f"Error connecting to {location} for file {file_name}: {e}")
+
+        return collected_results
+
+
+
+    def retrieve_map_results(self, original_file_name):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((self.master_ip, self.master_port))
+            request = {"jsonrpc": "2.0", "method": "data.get_data_location", "params": {"original_file_name": original_file_name}, "id": 1}
+            s.sendall(json.dumps(request).encode('utf-8'))
+            response = json.loads(s.recv(4096).decode('utf-8'))
+            print("Got response: ", response)
+            return response.get("result", [])
+
+    def send_results_to_reduce_server(self, reduce_server_location, map_results):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect(tuple(reduce_server_location))
+            for seq_num, result in enumerate(map_results):
+                packet = {"seq_num": seq_num, "is_last": False, "data": result}
+                s.sendall(json.dumps(packet).encode('utf-8'))
+                s.recv(1024)  # Acknowledgment
+            s.sendall(json.dumps({"seq_num": len(map_results), "is_last": True, "data": None}).encode('utf-8'))
+            s.recv(1024)  # Acknowledgment for final packet
+
 
     def test_multiple_clients(self):
         with open('test_input.json', 'r') as file:
