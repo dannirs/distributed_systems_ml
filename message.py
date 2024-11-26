@@ -40,7 +40,7 @@ class message:
         """
         Preprocess headers for Reduce tasks.
         """
-        if "map_results" not in self.header_list or not isinstance(self.header_list["map_results"], list):
+        if "key" not in self.header_list or not isinstance(self.header_list["key"], list):
             raise ValueError("Missing or invalid map results parameter for reduce task")
 
         self.header_list["payload_type"] = 0

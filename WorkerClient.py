@@ -203,8 +203,6 @@ class WorkerClient:
         print("Reduce task has been successfully executed.")
 
 
-# WorkerClient.py
-
     def collect_map_results(self, map_result_locations):
         """
         Connect to WorkerServers to retrieve all Map results.
@@ -219,38 +217,66 @@ class WorkerClient:
         collected_results = []
 
         for entry in map_result_locations:
-            print("entry: ", entry)
             file_name = entry[0]
             location = entry[1]
 
             print(f"Fetching Map result from {location} for file {file_name}")
+            task_data = {
+                "jsonrpc": "2.0",
+                "method": "retrieve_data",
+                "params": {
+                    "header_list": {
+                        "key": file_name
+                    },
+                    "payload": ""
+                },
+                "id": random.randint(1, 10000)
+            }
 
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                try:
-                    # Connect to the WorkerServer
-                    s.connect(tuple(location))
-
-                    # Send a retrieve_data request
-                    request = {
-                        "jsonrpc": "2.0",
-                        "method": "retrieve_data",
-                        "params": {"key": file_name},
-                        "id": 1
-                    }
-                    s.sendall(json.dumps(request).encode('utf-8'))
-
-                    # Receive and process the response
-                    response = json.loads(s.recv(4096).decode('utf-8'))
-                    if "result" in response and response["result"]:
-                        collected_results.append(response["result"])
-                        print(f"Successfully retrieved Map result for {file_name}")
-                    else:
-                        print(f"Error retrieving Map result for {file_name}: {response.get('error', 'Unknown error')}")
-
-                except Exception as e:
-                    print(f"Error connecting to {location} for file {file_name}: {e}")
+                s.connect((location[0], location[1]))
+                self.send_message(s, task_data)  # Ensure consistent JSON-RPC call
+                response = s.recv(4096).decode('utf-8')
+                print("Response: ", response)
+                response_data = json.loads(response)
+                if "result" in response_data and response_data["result"]:
+                    collected_results.append(response_data["result"])
+                    print(f"Successfully retrieved Map result for {file_name}")
+                else:
+                    print(f"Error retrieving Map result for {file_name}: {response_data.get('error', 'Unknown error')}")
 
         return collected_results
+
+                    
+
+
+
+        #     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        #         try:
+        #             # Connect to the WorkerServer
+        #             s.connect(tuple(location))
+
+        #             # Send a retrieve_data request
+        #             request = {
+        #                 "jsonrpc": "2.0",
+        #                 "method": "retrieve_data",
+        #                 "params": {"key": file_name},
+        #                 "id": 1
+        #             }
+        #             s.sendall(json.dumps(request).encode('utf-8'))
+
+        #             # Receive and process the response
+        #             response = json.loads(s.recv(4096).decode('utf-8'))
+        #             if "result" in response and response["result"]:
+        #                 collected_results.append(response["result"])
+        #                 print(f"Successfully retrieved Map result for {file_name}")
+        #             else:
+        #                 print(f"Error retrieving Map result for {file_name}: {response.get('error', 'Unknown error')}")
+
+        #         except Exception as e:
+        #             print(f"Error connecting to {location} for file {file_name}: {e}")
+
+        # return collected_results
 
 
 
@@ -263,15 +289,49 @@ class WorkerClient:
             print("Got response: ", response)
             return response.get("result", [])
 
-    def send_results_to_reduce_server(self, reduce_server_location, map_results):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect(tuple(reduce_server_location))
-            for seq_num, result in enumerate(map_results):
-                packet = {"seq_num": seq_num, "is_last": False, "data": result}
-                s.sendall(json.dumps(packet).encode('utf-8'))
-                s.recv(1024)  # Acknowledgment
-            s.sendall(json.dumps({"seq_num": len(map_results), "is_last": True, "data": None}).encode('utf-8'))
-            s.recv(1024)  # Acknowledgment for final packet
+    def send_results_to_reduce_server(self, reduce_server_location, collected_map_results):
+        """
+        Sends all collected Map results to the specified Reduce server.
+
+        Args:
+            reduce_server_location (tuple): A tuple containing the Reduce server's (IP, port).
+            collected_map_results (list): List of collected Map results.
+        """
+        print(f"Sending collected Map results to Reduce server at {reduce_server_location}")
+
+        for map_result in collected_map_results:
+            try:
+                task_data = {
+                    "jsonrpc": "2.0",
+                    "method": "reduce",  # Assuming the reduce server expects this method
+                    "params": {
+                        "header_list": {
+                            "key": map_result['key']  # Use the key from the map result
+                        },
+                        "payload": map_result['payload']  # Include the payload data
+                    },
+                    "id": random.randint(1, 10000)
+                }
+
+                # Create a socket connection to the reduce server
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.connect((reduce_server_location[0], reduce_server_location[1]))
+                    
+                    # Send the request using send_message for proper JSON-RPC formatting
+                    self.send_message(s, task_data)
+
+                    # Receive and process the response
+                    response = s.recv(4096).decode('utf-8')
+                    print("Response from Reduce server: ", response)
+                    response_data = json.loads(response)
+
+                    if response_data.get("result") == "success":
+                        print(f"Successfully sent Map result for key {map_result['key']}")
+                    else:
+                        print(f"Failed to send Map result for key {map_result['key']}: {response_data.get('error', 'Unknown error')}")
+            except Exception as e:
+                print(f"Error connecting to Reduce server at {reduce_server_location}: {e}")
+
 
 
     def test_multiple_clients(self):

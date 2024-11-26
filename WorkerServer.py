@@ -148,7 +148,7 @@ class FileService:
             elif file_extension == ".json":
                 # Load data from a JSON file
                 with open(key, 'r') as chunk_file:
-                    data_chunk = json.load(chunk_file)  # Assuming the JSON file is a list of records
+                    data_chunk = json.loads(chunk_file)  # Assuming the JSON file is a list of records
 
             else:
                 raise ValueError(f"Unsupported file type: {file_extension}")
@@ -191,7 +191,8 @@ class FileService:
             json.dump(team_results, f)
         self.send_data_location(player_result_path)
         self.send_data_location(team_result_path)
-
+        self.server.file_store[player_result_path] = (payload_type, player_result_path)
+        self.server.file_store[team_result_path] = (payload_type, team_result_path)
         return {
             "status": "success",
             "player_result_path": player_result_path,
@@ -200,7 +201,7 @@ class FileService:
 
 
     @dispatcher.add_method
-    def reduce(self, map_results=None):
+    def reduce(self, key=None, payload_type=None, payload=None):
         """
         Execute the Reduce function for player and team levels.
 
@@ -210,6 +211,7 @@ class FileService:
         Returns:
             dict: Status and path to the final reduced result files.
         """
+        map_results = json.loads(payload)
         print(f"Processing Reduce task for {len(map_results['player'])} player results and {len(map_results['team'])} team results")
 
         # Group and reduce player-level results
@@ -524,17 +526,24 @@ class WorkerServer:
                 print(f"ERROR: Invalid JSON string: {e}")
                 pass
             if not method or method != "send_task_to_client":
+                print("not method")
+                print(request)
                 marker = "{\"jsonrpc\":"
                 marker_index = request.index(marker)
                 next_marker_index = request.find(marker, marker_index + len(marker))
-
+                print(request)
                 if next_marker_index == -1:
+                    print("next")
                     json_params = json.loads(request)
+                    print(json_params)
                     if json_params['params']['payload_type'] == 2:
                         payload = conn.recv(1024).decode('utf-8')
+                        print(payload)
                         json_payload = json.loads(payload)
+                        print(json_payload)
                         json_params['params'].update(json_payload['params'])
                 else: 
+                    print("else")
                     params = request[marker_index:next_marker_index]
                     json_params = json.loads(params)
                     payload = request[next_marker_index:]
