@@ -123,18 +123,18 @@ class message:
         with open(file_path, 'rb') as file:
             payload = ""
             while True:
-                file_data = file.read(18000)  # Read 1024 bytes per packet
+                file_data = file.read(102400)  # Read 1024 bytes per packet
                 if not file_data:
                     break
                 packet = {
-                    "seq_num": seq_num,
-                    "finished": False,
+                    # "seq_num": seq_num,
+                    # "finished": False,
                     "payload": file_data.hex()  # Convert to hex for transport
                 }
                 packets.append(packet)
                 seq_num += 1
 
-        packets[-1]["finished"] = True
+        # packets[-1]["finished"] = True
         print("# of packets: ", len(packets))
         return packets  # Return all packets as a list
 

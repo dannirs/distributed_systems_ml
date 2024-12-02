@@ -92,7 +92,7 @@ class UserClient:
     def create_tasks(self, job_data):
         tasks = []
         job_id = random.randint(1, 40000)
-        max_chunk_size = 10 * 1024  # Chunk size in bytes (10 KB)
+        max_chunk_size = 3 * 1024  # Chunk size in bytes (10 KB)
 
         for dictionary in job_data:
             method = dictionary.get("method")
@@ -124,7 +124,7 @@ class UserClient:
                 tasks.append(task)
 
             # Handle mapreduce
-            elif method == "mapreduce":
+            elif method == "mapreduce" :
                 if not all(os.path.exists(fp) for fp in file_paths):
                     print(f"One or more files in file_paths are invalid: {file_paths}")
                     continue
@@ -425,3 +425,6 @@ if __name__ == '__main__':
 
     node = UserClient(args.config_files)
     node.run_interactive_mode()
+
+
+

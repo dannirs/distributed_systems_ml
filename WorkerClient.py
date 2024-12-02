@@ -34,7 +34,7 @@ class WorkerClient:
             payload = request_params["params"]["payload"]
             request_params["params"]["header_list"]["payload_type"] = 1
 
-        print("Request params: ", request_params)
+        # print("Request params: ", request_params)
         msg = message(
                         method=request_params["method"], 
                         source_port=s.getsockname(),
@@ -50,7 +50,7 @@ class WorkerClient:
                         "id": id
                     }
 
-        print("reduce request: ", request)
+        # print("reduce request: ", request)
         packet = json.dumps(request)
         s.sendall(packet.encode('utf-8'))
         time.sleep(1)  
@@ -76,8 +76,10 @@ class WorkerClient:
             print("sending payload")
         elif request["params"]["header_list"]["payload_type"] == 2:
             packets = message.process_payload(msg)
-            # print("payload packets: ", packets)
-            for packet in packets:
+            print("payload packets: ", packets)
+            for i, packet in enumerate(packets):
+                is_last_packet = (i == len(packets) - 1)
+                # packet["finished"] = is_last_packet
                 payload_request = {
                     "jsonrpc": jsonrpc,
                     "method": request_params["method"],
@@ -87,7 +89,7 @@ class WorkerClient:
                 # print(payload_request)
                 try: 
                     serialized_packet = json.dumps(payload_request)
-                    # print("Sending payload packet:", serialized_packet)
+                    print("Sending payload packet:", serialized_packet)
                     s.sendall(serialized_packet.encode('utf-8'))
                 except Exception as e:
                     print(f"Error serializing payload packet: {e}")
@@ -158,11 +160,11 @@ class WorkerClient:
                 "params": {"original_file_name": key},
                 "id": 2
             }
-            print(request)
-            print(type(request))
+            # print(request)
+            # print(type(request))
             json_request = json.dumps(request).encode('utf-8')
-            print(json_request)
-            print((type(json_request)))
+            # print(json_request)
+            # print((type(json_request)))
             print(f"DEBUG: Is socket open? {s.fileno() != -1}")
             s.sendall(json_request)
             response = s.recv(1024).decode('utf-8')
@@ -279,7 +281,7 @@ class WorkerClient:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.connect((location[0], location[1]))
                 self.send_message(s, task_data)  # Ensure consistent JSON-RPC call
-                response = s.recv(4096).decode('utf-8')
+                response = s.recv(102400).decode('utf-8')
                 print("Response: ", response)
                 response_data = json.loads(response)
                 if "result" in response_data and response_data["result"]:
@@ -342,25 +344,7 @@ class WorkerClient:
             collected_map_results (list): List of collected Map results.
         """
         print(f"Sending collected Map results to Reduce server at {reduce_server_location}")
-        for i, map_result in enumerate(collected_map_results):
-            print("sending packet: ", i)
-            print(bytes.fromhex(map_result['payload']).decode('utf-8'))
-            try:
-                # Determine if this is the last packet
-                is_last_packet = (i == len(collected_map_results) - 1)
 
-                task_data = {
-                    "jsonrpc": "2.0",
-                    "method": "reduce",  # Assuming the reduce server expects this method
-                    "params": {
-                        "header_list": {
-                            "key": map_result['key'],  # Use the key from the map result
-                            "finished": is_last_packet  # Set to True if this is the last packet
-                        },
-                        "payload": map_result['payload']  # Include the payload data
-                    },
-                    "id": random.randint(1, 10000)
-                }
 
         #         # Send task_data to the server or handle it as needed
         #         # (e.g., send via JSON-RPC or add to a queue)
@@ -392,23 +376,41 @@ class WorkerClient:
                 #     "payload": map_result['payload']
                 # }
                 # Create a socket connection to the reduce server
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.connect((reduce_server_location[0], reduce_server_location[1]))
-                    
-                    # Send the request using send_message for proper JSON-RPC formatting
-                    self.send_message(s, task_data)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((reduce_server_location[0], reduce_server_location[1]))
+            for i, map_result in enumerate(collected_map_results):
+                print("sending packet: ", i)
+                # try:
+                # Determine if this is the last packet
+                is_last_packet = (i == len(collected_map_results) - 1)
 
-                    # Receive and process the response
-                    # response = s.recv(4096).decode('utf-8')
-                    # print("Response from Reduce server: ", response)
-                    # response_data = json.loads(response)
+                task_data = {
+                    "jsonrpc": "2.0",
+                    "method": "reduce",  # Assuming the reduce server expects this method
+                    "params": {
+                        "header_list": {
+                            "key": map_result['key'],  # Use the key from the map result
+                            "finished": is_last_packet  # Set to True if this is the last packet
+                        },
+                        "payload": map_result['payload']  # Include the payload data
+                    },
+                    "id": random.randint(1, 10000)
+                }
+            
+            # Send the request using send_message for proper JSON-RPC formatting
+                self.send_message(s, task_data)
 
-                    # if response_data.get("result") == "success":
-                    #     print(f"Successfully sent Map result for key {map_result['key']}")
-                    # else:
-                    #     print(f"Failed to send Map result for key {map_result['key']}: {response_data.get('error', 'Unknown error')}")
-            except Exception as e:
-                print(f"Error connecting to Reduce server at {reduce_server_location}: {e}")
+            # Receive and process the response
+            # response = s.recv(4096).decode('utf-8')
+            # print("Response from Reduce server: ", response)
+            # response_data = json.loads(response)
+
+            # if response_data.get("result") == "success":
+            #     print(f"Successfully sent Map result for key {map_result['key']}")
+            # else:
+            #     print(f"Failed to send Map result for key {map_result['key']}: {response_data.get('error', 'Unknown error')}")
+    # except Exception as e:
+    #     print(f"Error connecting to Reduce server at {reduce_server_location}: {e}")
 
 
 

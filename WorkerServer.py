@@ -207,14 +207,28 @@ class FileService:
         """
         # Deserialize the map_results
         print("Running reduce")
+        print(payload)
         try:
-            map_results = json.loads(payload)  # Parse the JSON string
+            map_results = bytes.fromhex(payload).decode('utf-8')
+            map_results = json.loads(map_results)
+            print(type(map_results))
+            # print(map_results)
+            for result in map_results:
+                # print(f"Processing entry: {result}, type: {type(result)}")
+                # Check if result is a valid key-value pair
+                if isinstance(result, list) and len(result) == 2:
+                    key, value = result  # Unpack key and value
+                    # print(f"Valid entry: {key}, {value}")
+                # else:
+                #     print(f"Invalid entry detected: {result}")
+            # map_results = json.loads(map_results)
             if isinstance(map_results, list) and len(map_results) == 1 and isinstance(map_results[0], str):
-                map_results = json.loads(map_results[0])  # Parse the inner string as JSON
+                # map_results = json.loads(map_results[0])  # Parse the inner string as JSON
+                map_results = bytes.fromhex(map_results[0]).decode('utf-8')
         except json.JSONDecodeError as e:
             raise ValueError(f"Error decoding JSON payload: {e}")
 
-        print("Parsed map results:", map_results)
+        # print("Parsed map results:", map_results)
 
         # Process the map results
         grouped_data = {}
@@ -463,7 +477,7 @@ class FileService:
             payload = packet.process_payload()
             for i in range(len(payload)):
                 # print(payload[i])
-                print("retrieve data: ", payload[i]["payload"])
+                # print("retrieve data: ", payload[i]["payload"])
                 write_to_file(payload[i]["payload"], "sjlkjflsa.json")
                 response.update(payload[i])
         return response
@@ -593,7 +607,6 @@ class WorkerServer:
     #     finally:
     #         conn.close()
     #         print("Connection closed")
-
     def handle_client(self, conn):
         try:
             # Initialize the RPC dispatcher
@@ -613,15 +626,15 @@ class WorkerServer:
             headers = None
             method = None
             is_finished = False
-
+            print("handling client")
             while not is_finished:
                 # Receive data from the client
                 try:
-                    data = conn.recv(1024).decode('utf-8')
-                    # print("METHOD PACKET: ", data)
+                    data = conn.recv(102400).decode('utf-8').replace('\n', '').replace('\r', '')
                     if not data:
                         break
                     buffer += data
+                    print("got data")
                 except Exception as e:
                     print(f"Error receiving data: {e}")
                     break
@@ -644,21 +657,29 @@ class WorkerServer:
                     try:
                         # Parse the packet
                         packet = json.loads(packet)
-                        # print("Parsed packet:", packet)
 
                         # Extract method from the packet
                         if method is None:
                             method = packet.get("method")
                             print("Extracted method:", method)
 
-                        # Handle specific methods
-                        if method in ["send_data", "map", "reduce"]:
-                            # Extract headers from the first packet
+                        # Handle `send_data` for special processing
+                        if method == "send_data":
+                            payload_type = packet["params"]["header_list"]["payload_type"]
+                            if payload_type == 2:
+                                payload = conn.recv(1024).decode('utf-8')
+                                json_payload = json.loads(payload)
+                                packet["params"].update(json_payload["params"])
+
+                            response = JSONRPCResponseManager.handle(json.dumps(packet), dispatcher)
+                            conn.sendall(response.json.encode('utf-8'))
+                            return
+
+                        # Handle methods requiring multiple packets (map/reduce)
+                        if method in ["map", "reduce"]:
                             if headers is None:
                                 headers = packet.get("params", {}).get("header_list", {})
-                                print("Extracted headers:", headers)
 
-                            # Collect payloads with sequence numbers
                             payload = packet.get("params", {}).get("payload")
                             seq_num = packet.get("params", {}).get("seq_num")
                             finished = packet.get("params", {}).get("finished", False)
@@ -666,7 +687,6 @@ class WorkerServer:
                             if payload is not None:
                                 try:
                                     decoded_payload = bytes.fromhex(payload).decode('utf-8')
-                                    # print(f"Decoded payload (seq {seq_num}):", decoded_payload)
                                     collected_payloads.append((seq_num, decoded_payload))
                                 except ValueError as e:
                                     print(f"Payload decoding error: {e}")
@@ -676,10 +696,8 @@ class WorkerServer:
                                 break
 
                         elif method in ["retrieve_data", "send_data_location", "send_task_to_client"]:
-                            # Single-packet methods: Handle immediately
                             response = JSONRPCResponseManager.handle(json.dumps(packet), dispatcher)
                             conn.sendall(response.json.encode('utf-8'))
-                            print(f"Response sent for method {method}.")
                             return  # Exit after handling single-packet method
 
                     except json.JSONDecodeError as e:
@@ -687,33 +705,158 @@ class WorkerServer:
                         buffer += packet  # Re-add to buffer if incomplete
                         continue
 
-            # If the method requires combined payloads, send them to the RPC
-            if method in ["send_data", "map", "reduce"] and headers:
-                # Sort collected payloads by sequence number if present
-                aggregated_payload = ""
-                if collected_payloads:
+            # Finalize combined payload for map/reduce
+            if method in ["map", "reduce"] and headers and is_finished:
+                print("processing map")
+                if len(collected_payloads) == 1:
+                    final_payload = json.dumps(collected_payloads[0])
+                else:
                     collected_payloads.sort(key=lambda x: x[0] if x[0] is not None else -1)
-                    aggregated_payload = ''.join(payload for _, payload in collected_payloads).encode('utf-8').hex()
+                    aggregated_payload = [json.loads(payload.replace('\n', '').replace('\r', '')) for _, payload in collected_payloads]
+                    final_payload = json.dumps(aggregated_payload).encode('utf-8').hex()
 
                 rpc_request = {
                     "jsonrpc": "2.0",
                     "method": method,
                     "params": {
                         "header_list": headers,
-                        "payload": aggregated_payload
+                        "payload": final_payload
                     },
-                    "id": 1  # ID for JSON-RPC
+                    "id": 1
                 }
-                # print("RPC REQUEST: ", rpc_request)
                 response = JSONRPCResponseManager.handle(json.dumps(rpc_request), dispatcher)
                 conn.sendall(response.json.encode('utf-8'))
-                print(f"{method.capitalize()} RPC response sent.")
 
         except Exception as e:
             print(f"Exception in handle_client: {e}")
         finally:
             conn.close()
             print("Connection closed")
+
+
+
+    # def handle_client(self, conn):
+    #     try:
+    #         # Initialize the RPC dispatcher
+    #         file_service = FileService(self)
+    #         dispatcher.update({
+    #             "send_data": file_service.send_data,
+    #             "retrieve_data": file_service.retrieve_data,
+    #             "send_data_location": file_service.send_data_location,
+    #             "send_task_to_client": file_service.send_task_to_client,
+    #             "map": file_service.map,
+    #             "reduce": file_service.reduce,
+    #         })
+
+    #         # Initialize variables
+    #         buffer = ""
+    #         collected_payloads = []
+    #         headers = None
+    #         method = None
+    #         is_finished = False
+
+    #         while not is_finished:
+    #             # Receive data from the client
+    #             try:
+    #                 data = conn.recv(102400).decode('utf-8')
+    #                 print("METHOD PACKET: ", data)
+    #                 if not data:
+    #                     break
+    #                 buffer += data
+    #             except Exception as e:
+    #                 print(f"Error receiving data: {e}")
+    #                 break
+
+    #             # Split packets using "}{" as the delimiter
+    #             packets = buffer.split("}{")
+    #             if len(packets) > 1:
+    #                 # Re-add braces to make each JSON object valid
+    #                 packets = [
+    #                     f"{packet}}}" if i < len(packets) - 1 else packet
+    #                     for i, packet in enumerate(packets)
+    #                 ]
+    #                 buffer = packets.pop()  # Keep incomplete packet in the buffer
+    #             else:
+    #                 packets = [buffer]
+    #                 buffer = ""
+
+    #             # Process each complete packet
+    #             for packet in packets:
+    #                 try:
+    #                     # Parse the packet
+    #                     packet = json.loads(packet)
+    #                     # print("Parsed packet:", packet)
+
+    #                     # Extract method from the packet
+    #                     if method is None:
+    #                         method = packet.get("method")
+    #                         print("Extracted method:", method)
+
+    #                     # Handle specific methods
+    #                     if method in ["send_data", "map", "reduce"]:
+    #                         # Extract headers from the first packet
+    #                         if headers is None:
+    #                             headers = packet.get("params", {}).get("header_list", {})
+    #                             print("Extracted headers:", headers)
+
+    #                         # Collect payloads with sequence numbers
+    #                         payload = packet.get("params", {}).get("payload")
+    #                         seq_num = packet.get("params", {}).get("seq_num")
+    #                         finished = packet.get("params", {}).get("finished", False)
+
+    #                         if payload is not None:
+    #                             try:
+    #                                 decoded_payload = bytes.fromhex(payload).decode('utf-8')
+    #                                 # print(f"Decoded payload (seq {seq_num}):", decoded_payload)
+    #                                 collected_payloads.append((seq_num, decoded_payload))
+    #                                 print("collected payloads: ", len(collected_payloads))
+    #                             except ValueError as e:
+    #                                 print(f"Payload decoding error: {e}")
+
+    #                         if finished:
+    #                             is_finished = True
+    #                             break
+
+    #                     elif method in ["retrieve_data", "send_data_location", "send_task_to_client"]:
+    #                         # Single-packet methods: Handle immediately
+    #                         response = JSONRPCResponseManager.handle(json.dumps(packet), dispatcher)
+    #                         conn.sendall(response.json.encode('utf-8'))
+    #                         print(f"Response sent for method {method}.")
+    #                         return  # Exit after handling single-packet method
+
+    #                 except json.JSONDecodeError as e:
+    #                     print(f"JSON decoding error: {e}")
+    #                     buffer += packet  # Re-add to buffer if incomplete
+    #                     continue
+
+    #         # If the method requires combined payloads, send them to the RPC
+    #         if method in ["send_data", "map", "reduce"] and headers and is_finished:
+    #             # Sort collected payloads by sequence number if present
+    #             aggregated_payload = ""
+    #             if collected_payloads:
+    #                 print("number of payloads collected: ", len(collected_payloads))
+    #                 collected_payloads.sort(key=lambda x: x[0] if x[0] is not None else -1)
+    #                 aggregated_payload = ''.join(payload for _, payload in collected_payloads).encode('utf-8').hex()
+
+    #             rpc_request = {
+    #                 "jsonrpc": "2.0",
+    #                 "method": method,
+    #                 "params": {
+    #                     "header_list": headers,
+    #                     "payload": aggregated_payload
+    #                 },
+    #                 "id": 1  # ID for JSON-RPC
+    #             }
+    #             # print("RPC REQUEST: ", rpc_request)
+    #             response = JSONRPCResponseManager.handle(json.dumps(rpc_request), dispatcher)
+    #             conn.sendall(response.json.encode('utf-8'))
+    #             print(f"{method.capitalize()} RPC response sent.")
+
+    #     except Exception as e:
+    #         print(f"Exception in handle_client: {e}")
+    #     finally:
+    #         conn.close()
+    #         print("Connection closed")
 
 
     # def handle_client(self, conn):
