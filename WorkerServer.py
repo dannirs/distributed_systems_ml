@@ -118,7 +118,7 @@ class FileService:
         self.map_config_team = map_config_team
 
     @dispatcher.add_method
-    def map(self, key=None, payload_type=None, method=None, source_port=None, destination_port=None, status=None, file_path=None, seq_num=None, payload=None):
+    def map(self,  header_list=None, payload=None):
         """
         Execute the Map function for the given file chunk and process both player and team levels.
 
@@ -128,7 +128,8 @@ class FileService:
         Returns:
             dict: Status and paths to the output files.
         """
-
+        key = header_list["key"]
+        payload_type = header_list["payload_type"]
         print(f"Processing Map task for {key} at both player and team levels")
 
         # Detect file type based on extension
@@ -199,59 +200,141 @@ class FileService:
             "team_result_path": team_result_path
         }
 
-
     @dispatcher.add_method
-    def reduce(self, key=None, payload_type=None, payload=None):
+    def reduce(self, header_list=None, payload=None):
         """
-        Execute the Reduce function for player and team levels.
-
-        Args:
-            map_results (dict): A dictionary with player and team map results.
-
-        Returns:
-            dict: Status and path to the final reduced result files.
+        Execute the Reduce function for results.
         """
-        map_results = json.loads(payload)
-        print(f"Processing Reduce task for {len(map_results['player'])} player results and {len(map_results['team'])} team results")
+        # Deserialize the map_results
+        print("Running reduce")
+        try:
+            map_results = json.loads(payload)  # Parse the JSON string
+            if isinstance(map_results, list) and len(map_results) == 1 and isinstance(map_results[0], str):
+                map_results = json.loads(map_results[0])  # Parse the inner string as JSON
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Error decoding JSON payload: {e}")
 
-        # Group and reduce player-level results
-        grouped_player_data = {}
-        for result in map_results["player"]:
-            key, value = result
-            if key not in grouped_player_data:
-                grouped_player_data[key] = []
-            grouped_player_data[key].append(value)
+        print("Parsed map results:", map_results)
 
-        reduced_player_results = {}
-        for key, values in grouped_player_data.items():
-            reduced_player_results[key] = self.reduce_aggregate(key, values, self.reduce_config["aggregation_config"])
+        # Process the map results
+        grouped_data = {}
+        for result in map_results:
+            try:
+                key, value = result  # Unpack each key-value pair
+                if key not in grouped_data:
+                    grouped_data[key] = []
+                grouped_data[key].append(value)
+            except ValueError as e:
+                raise ValueError(f"Error unpacking map result: {result}, {e}")
 
-        # Group and reduce team-level results
-        grouped_team_data = {}
-        for result in map_results["team"]:
-            key, value = result
-            if key not in grouped_team_data:
-                grouped_team_data[key] = []
-            grouped_team_data[key].append(value)
+        # Reduce logic
+        reduced_results = {}
+        for key, values in grouped_data.items():
+            reduced_results[key] = self.reduce_aggregate(key, values, self.reduce_config["aggregation_config"])
 
-        reduced_team_results = {}
-        for key, values in grouped_team_data.items():
-            reduced_team_results[key] = self.reduce_aggregate(key, values, self.reduce_config["aggregation_config"])
+        # Save results
+        result_path = "reduce_result.json"
+        with open(result_path, "w") as f:
+            json.dump(reduced_results, f)
 
-        # Save final results locally
-        player_result_path = "reduce_result_player.json"
-        team_result_path = "reduce_result_team.json"
+        return {"status": "success", "result_path": result_path}
 
-        with open(player_result_path, "w") as f:
-            json.dump(reduced_player_results, f)
-        with open(team_result_path, "w") as f:
-            json.dump(reduced_team_results, f)
 
-        return {
-            "status": "success",
-            "player_result_path": player_result_path,
-            "team_result_path": team_result_path
-        }
+    # @dispatcher.add_method
+    # def reduce(self, payload=None):
+    #     """
+    #     Execute the Reduce function for a single list of results.
+
+    #     Args:
+    #         payload (str): A JSON string representing the map results.
+
+    #     Returns:
+    #         dict: Status and path to the final reduced result file.
+    #     """
+    #     # Parse the incoming payload into a Python list
+    #     print(payload)
+    #     map_results = json.loads(payload)
+    #     print("map results:", map_results)
+    #     print(f"Processing Reduce task for results")
+
+    #     # Group results by key
+    #     grouped_data = {}
+    #     for result in map_results:
+    #         key, value = result
+    #         if key not in grouped_data:
+    #             grouped_data[key] = []
+    #         grouped_data[key].append(value)
+
+    #     # Reduce the grouped data
+    #     reduced_results = {}
+    #     for key, values in grouped_data.items():
+    #         reduced_results[key] = self.reduce_aggregate(key, values, self.reduce_config["aggregation_config"])
+
+    #     # Save the final results locally
+    #     result_path = "reduce_result.json"
+    #     with open(result_path, "w") as f:
+    #         json.dump(reduced_results, f)
+
+    #     return {
+    #         "status": "success",
+    #         "result_path": result_path
+    #     }
+
+
+
+    # @dispatcher.add_method
+    # def reduce(self, payload=None):
+    #     """
+    #     Execute the Reduce function for player and team levels.
+
+    #     Args:
+    #         map_results (dict): A dictionary with player and team map results.
+
+    #     Returns:
+    #         dict: Status and path to the final reduced result files.
+    #     """
+    #     map_results = json.loads(payload)
+    #     print("map results: ", map_results)
+    #     print(f"Processing Reduce task for {len(map_results['player'])} player results and {len(map_results['team'])} team results")
+
+    #     # Group and reduce player-level results
+    #     grouped_player_data = {}
+    #     for result in map_results["player"]:
+    #         key, value = result
+    #         if key not in grouped_player_data:
+    #             grouped_player_data[key] = []
+    #         grouped_player_data[key].append(value)
+
+    #     reduced_player_results = {}
+    #     for key, values in grouped_player_data.items():
+    #         reduced_player_results[key] = self.reduce_aggregate(key, values, self.reduce_config["aggregation_config"])
+
+    #     # Group and reduce team-level results
+    #     grouped_team_data = {}
+    #     for result in map_results["team"]:
+    #         key, value = result
+    #         if key not in grouped_team_data:
+    #             grouped_team_data[key] = []
+    #         grouped_team_data[key].append(value)
+
+    #     reduced_team_results = {}
+    #     for key, values in grouped_team_data.items():
+    #         reduced_team_results[key] = self.reduce_aggregate(key, values, self.reduce_config["aggregation_config"])
+
+    #     # Save final results locally
+    #     player_result_path = "reduce_result_player.json"
+    #     team_result_path = "reduce_result_team.json"
+
+    #     with open(player_result_path, "w") as f:
+    #         json.dump(reduced_player_results, f)
+    #     with open(team_result_path, "w") as f:
+    #         json.dump(reduced_team_results, f)
+
+    #     return {
+    #         "status": "success",
+    #         "player_result_path": player_result_path,
+    #         "team_result_path": team_result_path
+    #     }
 
     def map_extract_key_value(self, record, key_config, value_config, encoding_config=None):
         """
@@ -323,8 +406,15 @@ class FileService:
 
 
     @dispatcher.add_method
-    def send_data(self, key=None, payload_type=None, method=None, source_port=None, destination_port=None, status=None, file_path=None, seq_num=None, payload=None):
+    def send_data(self, header_list=None, payload=None):
         print("Server is in send_data().")
+        print("send_data header: ", header_list)
+        print("send_data payload: ", payload)
+        payload_type = header_list["payload_type"]
+        key = header_list["key"]
+        file_path = header_list["file_path"]
+        destination_port = header_list["destination_port"]
+        source_port = header_list["source_port"]
         if payload_type == 2:
             file_path = f"server_files/{key}"
             write_to_file(payload, file_path)
@@ -344,7 +434,10 @@ class FileService:
         return headers 
 
     @dispatcher.add_method
-    def retrieve_data(self, key=None, payload_type=None, method=None, source_port=None, destination_port=None, status=None):
+    def retrieve_data(self, header_list=None):
+        key = header_list["key"]
+        destination_port = header_list["destination_port"]
+        source_port = header_list["source_port"]
         if key in self.server.file_store:
             payload_type = self.server.file_store[key][0]
             file_path = self.server.file_store[key][1]
@@ -368,7 +461,11 @@ class FileService:
 
         if status == 200 and payload_type == 2:
             payload = packet.process_payload()
-            response.update(payload)
+            for i in range(len(payload)):
+                # print(payload[i])
+                print("retrieve data: ", payload[i]["payload"])
+                write_to_file(payload[i]["payload"], "sjlkjflsa.json")
+                response.update(payload[i])
         return response
 
 
@@ -392,7 +489,9 @@ class FileService:
             print("Data location sent:", response)
 
     @dispatcher.add_method
-    def send_task_to_client(self, client_address=None, task_data=None):
+    def send_task_to_client(self, header_list=None):
+        task_data = header_list["task_data"]
+        client_address = header_list["client_address"]
         print(f"WorkerServer received task: {task_data}")
         jsonrpc = "2.0"
         id = random.randint(1, 40000)
@@ -495,84 +594,303 @@ class WorkerServer:
     #         conn.close()
     #         print("Connection closed")
 
-
     def handle_client(self, conn):
         try:
-            method = ""
+            # Initialize the RPC dispatcher
             file_service = FileService(self)
-            dispatcher["send_data"] = file_service.send_data
-            dispatcher["retrieve_data"] = file_service.retrieve_data
-            dispatcher["send_data_location"] = file_service.send_data_location
-            dispatcher["send_task_to_client"] = file_service.send_task_to_client
-            dispatcher["map"] = file_service.map
-            dispatcher["reduce"] = file_service.reduce
+            dispatcher.update({
+                "send_data": file_service.send_data,
+                "retrieve_data": file_service.retrieve_data,
+                "send_data_location": file_service.send_data_location,
+                "send_task_to_client": file_service.send_task_to_client,
+                "map": file_service.map,
+                "reduce": file_service.reduce,
+            })
 
-            request = conn.recv(1024).decode('utf-8')
-            print("From client: ", request)
-            if not request:
-                return False
-            print("Server received client's request in handle_client().")
-            try:
-                parsed = json.loads(request)
-                print(type(parsed["params"]))
-                if isinstance(parsed, dict):
-                    method = parsed["method"]
-                    print("method1: ", method)
-                else: 
-                    dicts = [json.loads(part) for part in parsed.split("}{")]
-                    method = dicts[0]["method"]
-                    print("method2: ", method)
-            except json.JSONDecodeError as e:
-                print(f"ERROR: Invalid JSON string: {e}")
-                pass
-            if not method or method != "send_task_to_client":
-                print("not method")
-                print(request)
-                marker = "{\"jsonrpc\":"
-                marker_index = request.index(marker)
-                next_marker_index = request.find(marker, marker_index + len(marker))
-                print(request)
-                if next_marker_index == -1:
-                    print("next")
-                    json_params = json.loads(request)
-                    print(json_params)
-                    if json_params['params']['payload_type'] == 2:
-                        payload = conn.recv(1024).decode('utf-8')
-                        print(payload)
-                        json_payload = json.loads(payload)
-                        print(json_payload)
-                        json_params['params'].update(json_payload['params'])
-                else: 
-                    print("else")
-                    params = request[marker_index:next_marker_index]
-                    json_params = json.loads(params)
-                    payload = request[next_marker_index:]
-                    json_payload = json.loads(payload)
-                    json_params['params'].update(json_payload['params'])
+            # Initialize variables
+            buffer = ""
+            collected_payloads = []
+            headers = None
+            method = None
+            is_finished = False
 
-                request = json.dumps(json_params)
-            if isinstance(request, dict):
-                print("DEBUG: Request is a dictionary. Serializing to JSON string.")
-                request = json.dumps(request)
-            
-            elif isinstance(request, str):
+            while not is_finished:
+                # Receive data from the client
                 try:
-                    parsed_request = json.loads(request)
-                    print("DEBUG: Request is a valid JSON string.")
-                except json.JSONDecodeError as e:
-                    print(f"ERROR: Invalid JSON string: {e}")
-                    return {"error": {"code": -32600, "message": "Invalid Request"}, "id": None, "jsonrpc": "2.0"}
+                    data = conn.recv(1024).decode('utf-8')
+                    # print("METHOD PACKET: ", data)
+                    if not data:
+                        break
+                    buffer += data
+                except Exception as e:
+                    print(f"Error receiving data: {e}")
+                    break
 
-            response = JSONRPCResponseManager.handle(request, dispatcher)
-            print("response: ", response.json)
-            conn.sendall(response.json.encode('utf-8'))
-            print("Server generated response.")
-            time.sleep(0.1)
+                # Split packets using "}{" as the delimiter
+                packets = buffer.split("}{")
+                if len(packets) > 1:
+                    # Re-add braces to make each JSON object valid
+                    packets = [
+                        f"{packet}}}" if i < len(packets) - 1 else packet
+                        for i, packet in enumerate(packets)
+                    ]
+                    buffer = packets.pop()  # Keep incomplete packet in the buffer
+                else:
+                    packets = [buffer]
+                    buffer = ""
+
+                # Process each complete packet
+                for packet in packets:
+                    try:
+                        # Parse the packet
+                        packet = json.loads(packet)
+                        # print("Parsed packet:", packet)
+
+                        # Extract method from the packet
+                        if method is None:
+                            method = packet.get("method")
+                            print("Extracted method:", method)
+
+                        # Handle specific methods
+                        if method in ["send_data", "map", "reduce"]:
+                            # Extract headers from the first packet
+                            if headers is None:
+                                headers = packet.get("params", {}).get("header_list", {})
+                                print("Extracted headers:", headers)
+
+                            # Collect payloads with sequence numbers
+                            payload = packet.get("params", {}).get("payload")
+                            seq_num = packet.get("params", {}).get("seq_num")
+                            finished = packet.get("params", {}).get("finished", False)
+
+                            if payload is not None:
+                                try:
+                                    decoded_payload = bytes.fromhex(payload).decode('utf-8')
+                                    # print(f"Decoded payload (seq {seq_num}):", decoded_payload)
+                                    collected_payloads.append((seq_num, decoded_payload))
+                                except ValueError as e:
+                                    print(f"Payload decoding error: {e}")
+
+                            if finished:
+                                is_finished = True
+                                break
+
+                        elif method in ["retrieve_data", "send_data_location", "send_task_to_client"]:
+                            # Single-packet methods: Handle immediately
+                            response = JSONRPCResponseManager.handle(json.dumps(packet), dispatcher)
+                            conn.sendall(response.json.encode('utf-8'))
+                            print(f"Response sent for method {method}.")
+                            return  # Exit after handling single-packet method
+
+                    except json.JSONDecodeError as e:
+                        print(f"JSON decoding error: {e}")
+                        buffer += packet  # Re-add to buffer if incomplete
+                        continue
+
+            # If the method requires combined payloads, send them to the RPC
+            if method in ["send_data", "map", "reduce"] and headers:
+                # Sort collected payloads by sequence number if present
+                aggregated_payload = ""
+                if collected_payloads:
+                    collected_payloads.sort(key=lambda x: x[0] if x[0] is not None else -1)
+                    aggregated_payload = ''.join(payload for _, payload in collected_payloads).encode('utf-8').hex()
+
+                rpc_request = {
+                    "jsonrpc": "2.0",
+                    "method": method,
+                    "params": {
+                        "header_list": headers,
+                        "payload": aggregated_payload
+                    },
+                    "id": 1  # ID for JSON-RPC
+                }
+                # print("RPC REQUEST: ", rpc_request)
+                response = JSONRPCResponseManager.handle(json.dumps(rpc_request), dispatcher)
+                conn.sendall(response.json.encode('utf-8'))
+                print(f"{method.capitalize()} RPC response sent.")
+
         except Exception as e:
             print(f"Exception in handle_client: {e}")
         finally:
             conn.close()
             print("Connection closed")
+
+
+    # def handle_client(self, conn):
+    #     try:
+    #         method = ""
+    #         file_service = FileService(self)
+    #         dispatcher["send_data"] = file_service.send_data
+    #         dispatcher["retrieve_data"] = file_service.retrieve_data
+    #         dispatcher["send_data_location"] = file_service.send_data_location
+    #         dispatcher["send_task_to_client"] = file_service.send_task_to_client
+    #         dispatcher["map"] = file_service.map
+    #         dispatcher["reduce"] = file_service.reduce
+
+    #         request = conn.recv(1024).decode('utf-8')
+    #         print("From client: ", request)
+    #         if not request:
+    #             return False
+    #         print("Server received client's request in handle_client().")
+    #         try:
+    #             parsed = json.loads(request)
+    #             print(type(parsed["params"]))
+    #             if isinstance(parsed, dict):
+    #                 method = parsed["method"]
+    #                 print("method1: ", method)
+    #             else: 
+    #                 dicts = [json.loads(part) for part in parsed.split("}{")]
+    #                 method = dicts[0]["method"]
+    #                 print("method2: ", method)
+    #         except json.JSONDecodeError as e:
+    #             print(f"ERROR: Invalid JSON string: {e}")
+    #             pass
+
+    #         if not method: 
+    #             # Split packets based on the assumption that each packet is a JSON object
+    #             # delimited by `}{` when received together
+    #             raw_packets = request.split("}{")
+                
+    #             # Adjust split packets to form valid JSON strings
+    #             if len(raw_packets) > 1:
+    #                 packets = [
+    #                     f"{packet}{{" if i < len(raw_packets) - 1 else f"{packet}}}"
+    #                     for i, packet in enumerate(raw_packets)
+    #                 ]
+    #             else:
+    #                 packets = [buffer]
+            
+    #             parsed_packet = json.loads(packets[0])
+    #             method = parsed_packet.get("method")
+            
+    #         print("this is the method: ", method)
+
+
+    #         if not method or method != "send_task_to_client":
+    #             print(request)
+    #             if method == "reduce":
+    #                 try:
+    #                     print("in handle_client_reduce")
+    #                     buffer = ""
+    #                     collected_payloads = []
+    #                     is_finished = False
+                        
+    #                     while not is_finished:
+    #                         # Receive packet from the client
+    #                         print("reducing")
+    #                         data = conn.recv(1024).decode('utf-8')
+    #                         print("reduce data: ", data)
+    #                         if not data:
+    #                             print("no data received")
+    #                             break
+
+    #                         buffer += data
+
+    #                         # Split packets if multiple are received
+    #                         packets = buffer.split("}{")
+    #                         if len(packets) > 1:
+    #                             packets = [
+    #                                 f"{packet}{{" if i < len(packets) - 1 else f"{packet}}}"
+    #                                 for i, packet in enumerate(packets)
+    #                             ]
+    #                             buffer = packets.pop()  # Keep the last (possibly incomplete) packet in the buffer
+    #                         else:
+    #                             packets = [buffer]
+    #                             buffer = ""
+
+    #                         for packet in packets:
+    #                             print("reduce packet: ", packet)
+    #                             try:
+    #                                 # Parse the JSON-RPC request
+    #                                 parsed_request = json.loads(packet)
+    #                                 print("reduce packet parsed: ", parsed_request)
+    #                             except json.JSONDecodeError:
+    #                                 buffer += packet  # Keep in buffer if not complete
+    #                                 continue
+
+    #                             # Check the "finished" flag
+    #                             finished = parsed_request.get("params", {}).get("finished", False)
+    #                             print("finished reduce: ", finished)
+    #                             payload = parsed_request.get("params", {}).get("payload")
+    #                             print("payload reduce: ", payload)
+                                
+    #                             print("try to add")
+    #                             if payload:
+    #                                 print("payload: ", payload)
+    #                                 print(type(payload))
+    #                                 try:
+    #                                     decoded_payload = bytes.fromhex(payload).decode('utf-8')
+    #                                     print("Decoded Payload:", decoded_payload)
+    #                                     collected_payloads.append(decoded_payload)
+    #                                 except ValueError as e:
+    #                                     print(f"Payload decoding error: {e}")
+                                    
+    #                             if finished:
+    #                                 is_finished = True
+    #                                 break  # Exit packet processing loop
+    #                     print("collected payloads: ", collected_payloads)
+    #                     # Send all collected payloads to the reduce function
+    #                     reduce_request = {
+    #                         "jsonrpc": "2.0",
+    #                         "method": "reduce",
+    #                         "params": {"payload": json.dumps(collected_payloads)},
+    #                         "id": 1  # ID for JSON-RPC
+    #                     }
+    #                     response = JSONRPCResponseManager.handle(json.dumps(reduce_request), dispatcher)
+    #                     conn.sendall(response.json.encode('utf-8'))
+
+    #                 except Exception as e:
+    #                     print(f"Exception in handle_client: {e}")
+    #                 finally:
+    #                     conn.close()
+    #                     print("Connection closed")
+    #                     return
+
+    #             marker = "{\"jsonrpc\":"
+    #             marker_index = request.index(marker)
+    #             next_marker_index = request.find(marker, marker_index + len(marker))
+    #             print(request)
+    #             if next_marker_index == -1:
+    #                 print("next")
+    #                 json_params = json.loads(request)
+    #                 print(json_params)
+    #                 if json_params['params']['payload_type'] == 2:
+    #                     payload = conn.recv(1024).decode('utf-8')
+    #                     print(payload)
+    #                     json_payload = json.loads(payload)
+    #                     print(json_payload)
+    #                     json_params['params'].update(json_payload['params'])
+    #             else: 
+    #                 print("else")
+    #                 params = request[marker_index:next_marker_index]
+    #                 json_params = json.loads(params)
+    #                 payload = request[next_marker_index:]
+    #                 json_payload = json.loads(payload)
+    #                 json_params['params'].update(json_payload['params'])
+
+    #             request = json.dumps(json_params)
+    #         if isinstance(request, dict):
+    #             print("DEBUG: Request is a dictionary. Serializing to JSON string.")
+    #             request = json.dumps(request)
+            
+    #         elif isinstance(request, str):
+    #             try:
+    #                 parsed_request = json.loads(request)
+    #                 print("DEBUG: Request is a valid JSON string.")
+    #             except json.JSONDecodeError as e:
+    #                 print(f"ERROR: Invalid JSON string: {e}")
+    #                 return {"error": {"code": -32600, "message": "Invalid Request"}, "id": None, "jsonrpc": "2.0"}
+
+    #         response = JSONRPCResponseManager.handle(request, dispatcher)
+    #         print("response: ", response.json)
+    #         conn.sendall(response.json.encode('utf-8'))
+    #         print("Server generated response.")
+    #         time.sleep(0.1)
+    #     except Exception as e:
+    #         print(f"Exception in handle_client: {e}")
+    #     finally:
+    #         conn.close()
+    #         print("Connection closed")
 
     def start_server(self):
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

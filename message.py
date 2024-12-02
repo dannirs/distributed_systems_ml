@@ -30,6 +30,7 @@ class message:
         """
         Preprocess headers for Map tasks.
         """
+        print("map headers: ", self.header_list)
         if "key" not in self.header_list or not self.header_list["key"]:
             raise ValueError("Missing chunked file parameter for map task")
 
@@ -40,7 +41,8 @@ class message:
         """
         Preprocess headers for Reduce tasks.
         """
-        if "key" not in self.header_list or not isinstance(self.header_list["key"], list):
+        print(self.header_list)
+        if "key" not in self.header_list:
             raise ValueError("Missing or invalid map results parameter for reduce task")
 
         self.header_list["payload_type"] = 0
@@ -90,29 +92,77 @@ class message:
         self.header_list["payload_type"] = 0
         return self.header_list
 
+    # def process_payload(self):
+    #     """
+    #     Process payload for file-based operations, sending the entire payload in one packet.
+    #     """
+    #     if "key" not in self.header_list or not self.header_list["key"]:
+    #         raise ValueError("Missing path to file")
+        
+    #     file_path = self.header_list["key"]
+
+    #     with open(file_path, 'rb') as file:
+    #         # Read the entire file and encode it as a hexadecimal string
+    #         payload = file.read().hex()
+
+    #     # Return the entire payload as a single packet
+    #     return [{"payload": payload}]
+
+
     def process_payload(self):
         """
-        Process payload for file-based operations.
+        Process payload for file-based operations, splitting into chunks for transmission.
         """
-        if self.header_list["payload_type"] == 1:
-            raise ValueError("Incorrect payload type")
         if "key" not in self.header_list or not self.header_list["key"]:
             raise ValueError("Missing path to file")
             
-        file = self.header_list["key"]
+        file_path = self.header_list["key"]
+        packets = []
         seq_num = 0
-        with open(file, 'rb') as f:
+
+        with open(file_path, 'rb') as file:
+            payload = ""
             while True:
-                file_data = f.read(1024)
+                file_data = file.read(18000)  # Read 1024 bytes per packet
                 if not file_data:
                     break
                 packet = {
-                    "seq_num": seq_num, 
-                    "payload": file_data.hex()
+                    "seq_num": seq_num,
+                    "finished": False,
+                    "payload": file_data.hex()  # Convert to hex for transport
                 }
+                packets.append(packet)
                 seq_num += 1
-        f.close()
-        return packet
+
+        packets[-1]["finished"] = True
+        print("# of packets: ", len(packets))
+        return packets  # Return all packets as a list
+
+
+    # def process_payload(self):
+    #     """
+    #     Process payload for file-based operations.
+    #     """
+    #     if self.header_list["payload_type"] == 1:
+    #         raise ValueError("Incorrect payload type")
+    #     if "key" not in self.header_list or not self.header_list["key"]:
+    #         raise ValueError("Missing path to file")
+            
+    #     file = self.header_list["key"]
+    #     seq_num = 0
+    #     with open(file, 'rb') as f:
+    #         while True:
+    #             file_data = f.read(1024)
+    #             print(file_data)
+    #             if not file_data:
+    #                 break
+    #             packet = {
+    #                 "seq_num": seq_num, 
+    #                 "payload": file_data.hex()
+    #             }
+    #             seq_num += 1
+    #     f.close()
+    #     return packet
 
 
 # class message:

@@ -56,9 +56,11 @@ class JobManager:
                 message = {
                     "jsonrpc": "2.0",
                     "method": "send_task_to_client",
-                    "params": {
+                    "params": {"header_list": {
                         "client_address": client_address,
-                        "task_data": task
+                        "task_data": task,
+                        "finished": True
+                        }
                     },
                     "id": random.randint(1, 40000)
                 }

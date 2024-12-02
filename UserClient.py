@@ -3,6 +3,46 @@ import json
 import random
 import os
 import argparse
+import csv
+
+# 1. Set up the script to run configs in different directories
+# 2. Finish debugging Reduce phase 
+# 3. Test chunking the files
+# 4. Implement ML algorithm (linear regression)
+
+# for linear regression, need to produce individual results for each chunk
+# test dataset and the actual dataset 
+# map phase - chunk1res, chunk2res (keys-value pairs) --> 10 chunks --> execute linear regression, add it to map func.
+# get partial results from all individual chunks, and then combine them to get the final model in the reduce phase
+# reduce phase - final result (use aggregate approach, aggregates all key-value pairs) --> 1 result
+# weights - player salaries, daily fantasy algorithm for scoring, total money available
+# can get the average for partial data, but how to get the total average in the aggregate? 
+# use intermediate result for partial data
+# ex. computing the average for the whole data
+# points 2022  minutes 2022
+# points 2023  minutes 2023
+# reduce - average
+# mapreduce task --> check if files chunked --> map_file1_1, map_file1_2, map_file2, reduce_(file1,file2)
+# jobmanager --> map tasks executed, all tasks succeed, reduce task executed
+# reduce client --> datamanager --> retrieve all map results --> sends map results to reduce server 
+# Can load linear regression coefficients etc. in json
+
+# optimal team: [players] 
+
+# script can call python programs to run code like initializing the worker object
+# script is to get the different config files from different directories and call start_master,
+# start_workers, etc. --> is the start to the program
+
+# start program by calling config file, which starts userclient --> enter list of configuration paths, command line arguments
+# for job
+# similar to scala, the shell file should be a user interface to start up UserClient 
+# as a test program, can have a script that already has all command line arguments and jobs and configs; just returns
+# a result
+
+# final report: use the weekly report and make it more formal; highlight key milestones (same day as deliverable)
+# Tutorial for the user to use the program
+# when delivering, put everything in one package
+# can be later (dec. 17, etc.) 
 
 class UserClient:
     def __init__(self, config_files):
@@ -52,7 +92,7 @@ class UserClient:
     def create_tasks(self, job_data):
         tasks = []
         job_id = random.randint(1, 40000)
-        max_chunk_size = 10 * 1024 * 1024  # Chunk size in bytes (10 MB)
+        max_chunk_size = 10 * 1024  # Chunk size in bytes (10 KB)
 
         for dictionary in job_data:
             method = dictionary.get("method")
@@ -63,11 +103,6 @@ class UserClient:
 
             # Handle send_data
             if method == "send_data":
-                # if file_path and not os.path.exists(file_path):
-                #     print(f"Invalid or missing file path: {file_path}")
-                #     continue
-
-                # Single task for sending the file
                 task = {
                     "job_id": job_id,
                     "task_id": random.randint(1, 40000),
@@ -79,7 +114,6 @@ class UserClient:
 
             # Handle retrieve_data
             elif method == "retrieve_data":
-                # Single task for retrieving the file
                 task = {
                     "job_id": job_id,
                     "task_id": random.randint(1, 40000),
@@ -95,27 +129,63 @@ class UserClient:
                     print(f"One or more files in file_paths are invalid: {file_paths}")
                     continue
 
-                # Prepare for Map tasks and Reduce task
                 map_results = []  # To store map result paths for reduce
 
                 for file_path in file_paths:
                     file_size = os.path.getsize(file_path)
+                    print("file size: ", file_size)
+                    print("max chunk size: ", max_chunk_size)
 
-                    if file_size > max_chunk_size:  # Chunk large files
+                    if file_size > max_chunk_size:  # Chunk large CSV files
                         print(f"Chunking large file for mapreduce: {file_path}")
                         base_name, ext = os.path.splitext(file_path)
-                        num_chunks = -(-file_size // max_chunk_size)
+                        chunk_id = 0
 
-                        with open(file_path, 'rb') as f:
-                            for chunk_id in range(num_chunks):
-                                chunk_data = f.read(max_chunk_size)
+                        with open(file_path, 'r') as csv_file:
+                            reader = csv.reader(csv_file)
+                            header = next(reader)  # Extract the header row
+
+                            chunk_rows = []
+                            chunk_size = 0
+
+                            for row in reader:
+                                row_size = sum(len(str(cell)) for cell in row)
+                                if chunk_size + row_size > max_chunk_size:
+                                    # Write current chunk to a file
+                                    chunk_file_name = f"{base_name}_part{chunk_id + 1}{ext}"
+                                    with open(chunk_file_name, 'w', newline='') as chunk_file:
+                                        writer = csv.writer(chunk_file)
+                                        writer.writerow(header)  # Write the header
+                                        writer.writerows(chunk_rows)  # Write the rows
+
+                                    # Create a Map task for the chunk
+                                    tasks.append({
+                                        "job_id": job_id,
+                                        "task_id": random.randint(1, 40000),
+                                        "method": "map",
+                                        "header_list": {"original_file": file_path, "key": chunk_file_name},
+                                        "payload": None
+                                    })
+                                    map_results.append(chunk_file_name)  # Add chunk name to map results
+
+                                    # Reset chunk data
+                                    chunk_rows = []
+                                    chunk_size = 0
+                                    chunk_id += 1
+
+                                # Add the current row to the chunk
+                                chunk_rows.append(row)
+                                chunk_size += row_size
+
+                            # Write the last chunk if it exists
+                            if chunk_rows:
                                 chunk_file_name = f"{base_name}_part{chunk_id + 1}{ext}"
+                                with open(chunk_file_name, 'w', newline='') as chunk_file:
+                                    writer = csv.writer(chunk_file)
+                                    writer.writerow(header)  # Write the header
+                                    writer.writerows(chunk_rows)  # Write the rows
 
-                                # Save the chunk locally
-                                with open(chunk_file_name, 'wb') as chunk_file:
-                                    chunk_file.write(chunk_data)
-
-                                # Create a Map task for each chunk
+                                # Create a Map task for the chunk
                                 tasks.append({
                                     "job_id": job_id,
                                     "task_id": random.randint(1, 40000),
@@ -124,6 +194,7 @@ class UserClient:
                                     "payload": None
                                 })
                                 map_results.append(chunk_file_name)  # Add chunk name to map results
+
                     else:
                         # Single Map task for small files
                         tasks.append({

@@ -1,13 +1,9 @@
 #!/bin/bash
 
-# Paths to configuration files
-MASTER_CONFIG="/path/to/master/config.json"
-WORKER_CONFIG_DIR="/path/to/worker/configs/"
+MASTER_CONFIG="C:\Users\Danni\Config4\config.json"
+WORKER_CONFIG_DIR=["C:\Users\Danni\Config1\config.json","C:\Users\Danni\Config2\config.json","C:\Users\Danni\Config3\config.json\"]
+PYTHON_SCRIPT="C:\Users\Danni\distributed_systems_ml\MasterNode.py"
 
-# Path to Python scripts for Master and Worker nodes
-PYTHON_SCRIPT="/path/to/your/python_script.py"
-
-# Function to start the master node
 start_master() {
     echo "Starting Master Node..."
     python3 $PYTHON_SCRIPT --config $MASTER_CONFIG --role master &
@@ -15,7 +11,6 @@ start_master() {
     echo "Master Node started with PID $MASTER_PID"
 }
 
-# Function to start worker nodes
 start_workers() {
     echo "Starting Worker Nodes..."
     for WORKER_CONFIG in "$WORKER_CONFIG_DIR"/*.json; do
@@ -25,7 +20,6 @@ start_workers() {
     done
 }
 
-# Main script execution
 echo "Initializing Distributed System"
 start_master
 start_workers
