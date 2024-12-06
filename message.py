@@ -1,3 +1,6 @@
+import os
+import json
+
 class message:
     def __init__(self, method, source_port, destination_port, header_list, payload=None):
         self.method = method
@@ -108,6 +111,27 @@ class message:
     #     # Return the entire payload as a single packet
     #     return [{"payload": payload}]
 
+    def check_file_type(self, file_path):
+        """
+        Check if the given file path is a JSON or CSV file.
+
+        Args:
+            file_path (str): The file path to check.
+
+        Returns:
+            str: The file type ('json', 'csv', or 'unknown').
+        """
+        # Get the file extension
+        _, file_extension = os.path.splitext(file_path)
+        
+        # Check the file type
+        if file_extension.lower() == ".json":
+            return "json"
+        elif file_extension.lower() == ".csv":
+            return "csv"
+        else:
+            return "unknown"
+
 
     def process_payload(self):
         """
@@ -119,20 +143,44 @@ class message:
         file_path = self.header_list["key"]
         packets = []
         seq_num = 0
+        batch_size = 20
+        if self.check_file_type(file_path) == "json":
+            with open(file_path, 'r') as file:
+                json_data = json.load(file)  # Load entire JSON file
 
-        with open(file_path, 'rb') as file:
-            payload = ""
-            while True:
-                file_data = file.read(102400)  # Read 1024 bytes per packet
-                if not file_data:
-                    break
+            # Batch the data
+            for i in range(0, len(json_data), batch_size):
+                batch = json_data[i:i + batch_size]  # Create a batch of items
+                payload = json.dumps(batch).encode('utf-8').hex()  # Serialize and encode
+
                 packet = {
                     "seq_num": seq_num,
                     "finished": False,
-                    "payload": file_data.hex()  # Convert to hex for transport
+                    "payload": payload
                 }
                 packets.append(packet)
                 seq_num += 1
+
+            # Mark the last packet as finished
+            if packets:
+                packets[-1]["finished"] = True
+
+            return packets
+
+        else:
+            with open(file_path, 'rb') as file:
+                payload = ""
+                while True:
+                    file_data = file.read(102400)  # Read 1024 bytes per packet
+                    if not file_data:
+                        break
+                    packet = {
+                        "seq_num": seq_num,
+                        "finished": False,
+                        "payload": file_data.hex()  # Convert to hex for transport
+                    }
+                    packets.append(packet)
+                    seq_num += 1
 
         packets[-1]["finished"] = True
         print("# of packets: ", len(packets))

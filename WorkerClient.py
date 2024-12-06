@@ -8,6 +8,7 @@ import time
 from TaskManager import TaskManager
 from JSONRPCProxy import JSONRPCProxy
 import os
+from main import write_packets_to_file, read_packets_from_file, verify_format 
 
 class WorkerClient:
     def __init__(self, master_ip, master_port, server_ip, server_port, ip, port):
@@ -65,6 +66,20 @@ class WorkerClient:
             # packet = json.dumps(request)
             # s.sendall(packet.encode('utf-8'))
             packets = message.process_payload(msg)
+
+
+            write_packets_to_file(packets, "packets.json")
+
+            # Step 3: Read packets from the JSON file and verify structure
+            reconstructed_data = read_packets_from_file("packets.json")
+
+            # Step 4: Verify format
+            format_is_correct = verify_format(reconstructed_data)
+
+            print("\nDEBUG: Reconstructed data:", reconstructed_data)
+            print("\nDEBUG: Format is correct:", format_is_correct)
+
+
             for packet in packets:
                 packet["finished"] = request_params["params"]["header_list"]["finished"]
                 payload_request = {
@@ -75,6 +90,7 @@ class WorkerClient:
                 }
                 s.sendall(json.dumps(payload_request).encode('utf-8'))
             print("sending payload")
+            # print(f"Sending packet: {json.dumps(payload_request)}")
         elif request["params"]["header_list"]["payload_type"] == 2:
             packets = message.process_payload(msg)
             print("payload packets: ", packets)

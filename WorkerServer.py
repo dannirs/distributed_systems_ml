@@ -200,8 +200,62 @@ class FileService:
             "team_result_path": team_result_path
         }
 
-    @dispatcher.add_method
     def reduce(self, header_list=None, payload=None):
+        try:
+            # Get the payload from params
+            results = payload
+            # print(f"Initial results: {results}")
+
+            # Decode payload if it's a hex string
+            if isinstance(results, str):
+                print("IS STRING")
+                try:
+                    # If results is a single string, decode it as JSON
+                    results = bytes.fromhex(results).decode('utf-8')
+                    results = json.loads(results)
+                    # print(f"Decoded results: {results}")
+                except json.JSONDecodeError as e:
+                    print(f"Error decoding results: {e}")
+                    return
+
+            # Ensure results is now a list
+            if not isinstance(results, list):
+                raise ValueError(f"Expected a list for results, got {type(results)}")
+
+            # Process each element in the results list
+            processed_results = []
+            for result in results:
+                if isinstance(result, list) and len(result) == 2:
+                    processed_results.append(result)
+                else:
+                    print(f"Invalid result format: {result}")
+
+            # Combine results
+            reduced_data = {}
+            for key, value in processed_results:
+                print(key)
+                if key not in reduced_data:
+                    reduced_data[key] = value
+                else:
+                    # Aggregate values (example: summing numerical stats)
+                    for stat, stat_value in value.items():
+                        if isinstance(stat_value, (int, float)):
+                            reduced_data[key][stat] += stat_value
+
+            print(f"Reduced data: {reduced_data}")
+            result_path = "reduce_result.json"
+            with open(result_path, "w") as f:
+                json.dump(reduced_data, f)
+            return reduced_data
+
+        except Exception as e:
+            print(f"Error in reduce: {e}")
+            raise
+
+
+
+    @dispatcher.add_method
+    def reduce2(self, header_list=None, payload=None):
         """
         Execute the Reduce function for results.
         """
@@ -664,6 +718,19 @@ class WorkerServer:
                         if method is None:
                             method = packet.get("method")
                             print("Extracted method:", method)
+                        if method is not None and method == "reduce" and "header_list" not in packet["params"]:
+                            payload_json = bytes.fromhex(packet["params"]["payload"]).decode('utf-8')
+                            payload = json.loads(payload_json)
+                            print("DECODED PAYLOAD: ", payload)
+                            if isinstance(payload, list):  # Check if the outer structure is a list
+                                is_list_of_lists = all(isinstance(item, list) for item in payload)  # Check if all items are lists
+
+                                if is_list_of_lists:
+                                    print("The payload is a list of lists.")
+                                else:
+                                    print("The payload is a list, but not all elements are lists.")
+                            else:
+                                print("The payload is not a list.")
 
                         # Handle `send_data` for special processing
                         if method == "send_data":
@@ -679,7 +746,7 @@ class WorkerServer:
                                 
                         if method == "send_data" and "finished" in packet["params"]:
                             print("processing file")
-                            print(packet)
+                            # print(packet)
                             seq_num = packet.get("params", {}).get("seq_num")
                             payload = packet.get("params", {}).get("payload")
                             finished = packet.get("params", {}).get("finished", False)
@@ -710,11 +777,24 @@ class WorkerServer:
                             payload = packet.get("params", {}).get("payload")
                             seq_num = packet.get("params", {}).get("seq_num")
                             finished = packet.get("params", {}).get("finished", False)
-
+                            # print(f"Received payload (hex): {payload}")
                             if payload is not None:
                                 try:
-                                    decoded_payload = bytes.fromhex(payload).decode('utf-8')
+                                    payload_json = bytes.fromhex(packet["params"]["payload"]).decode('utf-8')
+                            # payload = json.loads(payload_json)
+                                    decoded_payload = json.loads(payload_json)
                                     collected_payloads.append((seq_num, decoded_payload))
+                                    if isinstance(decoded_payload, list):  # Check if the outer structure is a list
+                                        is_list_of_lists = all(isinstance(item, list) for item in decoded_payload)  # Check if all items are lists
+
+                                        if is_list_of_lists:
+                                            print("The payload after decoding is a list of lists.")
+                                        else:
+                                            print("The payload is a list, but not all elements are lists.")
+                                    else:
+                                        print("The payload is not a list.")
+                                    # decoded_payload = bytes.fromhex(payload).decode('utf-8')
+                                    # collected_payloads.append((seq_num, decoded_payload))
                                 except ValueError as e:
                                     print(f"Payload decoding error: {e}")
 
@@ -738,7 +818,7 @@ class WorkerServer:
                 print("headers: ", headers)
                 collected_payloads.sort(key=lambda x: x[0])  # Sort by sequence number
                 aggregated_payload = ''.join(payload for _, payload in collected_payloads)
-                print(aggregated_payload)
+                # print(aggregated_payload)
 
 
                 # Create the RPC request
@@ -761,19 +841,41 @@ class WorkerServer:
                 if len(collected_payloads) == 1:
                     final_payload = json.dumps(collected_payloads[0])
                 else:
-                    collected_payloads.sort(key=lambda x: x[0] if x[0] is not None else -1)
-                    aggregated_payload = [json.loads(payload.replace('\n', '').replace('\r', '')) for _, payload in collected_payloads]
-                    final_payload = json.dumps(aggregated_payload).encode('utf-8').hex()
+                    # Ensure collected_payloads is sorted by sequence number
+                    collected_payloads.sort(key=lambda x: x[0])  # Sort by sequence number
 
+                    # Combine all decoded payloads into a single list while maintaining structure
+                    final_payload = []
+                    for _, payload in collected_payloads:
+                        final_payload.extend(payload)  # Extend the aggregated list with each payload
+
+                    # Print to verify the structure
+                    print("Aggregated payload (list of lists):", final_payload)
+
+                # Create the RPC request while preserving the list of lists structure
                 rpc_request = {
                     "jsonrpc": "2.0",
                     "method": method,
                     "params": {
                         "header_list": headers,
-                        "payload": final_payload
+                        "payload": final_payload  # Pass the aggregated list directly
                     },
                     "id": 1
                 }
+
+                #     collected_payloads.sort(key=lambda x: x[0] if x[0] is not None else -1)
+                #     aggregated_payload = [json.loads(payload.replace('\n', '').replace('\r', '')) for _, payload in collected_payloads]
+                #     final_payload = json.dumps(aggregated_payload).encode('utf-8').hex()
+
+                # rpc_request = {
+                #     "jsonrpc": "2.0",
+                #     "method": method,
+                #     "params": {
+                #         "header_list": headers,
+                #         "payload": final_payload
+                #     },
+                #     "id": 1
+                # }
                 response = JSONRPCResponseManager.handle(json.dumps(rpc_request), dispatcher)
                 conn.sendall(response.json.encode('utf-8'))
 

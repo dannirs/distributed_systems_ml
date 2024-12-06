@@ -2,7 +2,7 @@
     {
         "method": "mapreduce",
         "header_list": {
-            "keys": ["stats.csv"]
+            "keys": ["NBA-stats_2024.csv", "NBA-stats_2023.csv"]
         },
         "payload": ""
     }
