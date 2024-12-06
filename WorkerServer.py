@@ -67,6 +67,15 @@ class FileService:
             "Pos": {"C": 1, "F": 2, "G": 3}
         }
 
+        scoring_config = {
+            "points": 1,
+            "rebounds": 1.2,
+            "assists": 1.5,
+            "steals": 3,
+            "blocks": 3,
+            "turnovers": -1
+        }
+
         map_config_player = {
             "key_config": "Player",
             "value_config": {
@@ -77,6 +86,9 @@ class FileService:
                 "points": "PTS",
                 "rebounds": "REB",
                 "assists": "AST",
+                "steals": "STL",
+                "blocks": "BLK",
+                "turnovers": "TO",
                 "ft_percentage": "FT%",
                 "fg_percentage": "FG%",
                 "three_pt_percentage": "3P%",
@@ -94,7 +106,6 @@ class FileService:
             }
         }
 
-
         reduce_config = {
             "aggregation_config": {
                 "Team": "direct",  # Directly take the 'team' field
@@ -104,6 +115,9 @@ class FileService:
                 "games": "sum",
                 "rebounds": "sum",  # Sum up rebounds
                 "assists": "sum",  # Sum up assists
+                "steals": "sum",
+                "blocks": "sum",
+                "turnovers": "sum",
                 "ft_percentage": "average",  # Calculate average free throw percentage
                 "fg_percentage": "average",  # Calculate average field goal percentage
                 "three_pt_percentage": "average",  # Calculate average three-point percentage
@@ -116,6 +130,95 @@ class FileService:
         self.reduce_config = reduce_config          # Import or define reduce config
         self.encoding_config = encoding_config      # Import or define encoding config
         self.map_config_team = map_config_team
+
+    @dispatcher.add_method
+    def map(self, header_list=None, payload=None):
+        key = header_list["key"]
+        data_chunk = self.load_file(key)  # Load file (JSON/CSV)
+
+        # Filter players by teams playing
+        data_chunk = [
+            record for record in data_chunk if record["Team"] in teams_playing
+        ]
+
+        player_results = []
+        training_data = []
+        target_data = []
+
+        for record in data_chunk:
+            # Original map logic
+            player_key, player_value = self.map_extract_key_value(
+                record,
+                self.map_config_player["key_config"],
+                self.map_config_player["value_config"],
+                self.encoding_config
+            )
+
+            # Calculate fantasy points
+            fantasy_points = sum(
+                scoring_config[field] * float(player_value.get(field, 0))
+                for field in scoring_config
+            )
+            player_value["fantasy_points"] = fantasy_points
+
+            # Extract player salary
+            player_name = record.get("Player")
+            player_value["salary"] = salary_config.get(player_name, 0)
+
+            # Prepare data for linear regression
+            feature_vector = [
+                player_value.get("games", 0),
+                player_value.get("minutes", 0),
+                player_value.get("points", 0),
+                player_value.get("rebounds", 0),
+                player_value.get("assists", 0),
+            ]
+            training_data.append(feature_vector)
+            target_data.append(fantasy_points)
+
+            player_results.append((player_key, player_value))
+
+        # Train linear regression model on the chunk
+        lr_model = self.train_linear_regression(training_data, target_data)
+
+        # Save model and results
+        result_path = f"map_result_{os.path.basename(key)}.json"
+        model_path = f"lr_model_{os.path.basename(key)}.json"
+        with open(result_path, "w") as f:
+            json.dump(player_results, f)
+        with open(model_path, "w") as f:
+            json.dump(lr_model, f)  # Save model coefficients/intercept
+
+        return {"status": "success", "result_path": result_path, "model_path": model_path}
+
+    def train_linear_regression(self, X, y):
+        # Gradient Descent Parameters
+        learning_rate = 0.01
+        num_iterations = 1000
+        num_features = len(X[0])
+
+        # Initialize weights and bias
+        weights = [0.0] * num_features
+        bias = 0.0
+
+        # Gradient Descent
+        for _ in range(num_iterations):
+            weight_gradients = [0.0] * num_features
+            bias_gradient = 0.0
+
+            for i in range(len(X)):
+                prediction = sum(w * x for w, x in zip(weights, X[i])) + bias
+                error = prediction - y[i]
+
+                for j in range(num_features):
+                    weight_gradients[j] += error * X[i][j]
+                bias_gradient += error
+
+            weights = [w - learning_rate * grad / len(X) for w, grad in zip(weights, weight_gradients)]
+            bias -= learning_rate * bias_gradient / len(X)
+
+        return {"weights": weights, "bias": bias}
+
 
     @dispatcher.add_method
     def map(self,  header_list=None, payload=None):
@@ -222,90 +325,148 @@ class FileService:
             if not isinstance(results, list):
                 raise ValueError(f"Expected a list for results, got {type(results)}")
 
-            # Process each element in the results list
-            processed_results = []
+            grouped_player_data = {}
             for result in results:
-                if isinstance(result, list) and len(result) == 2:
-                    processed_results.append(result)
-                else:
-                    print(f"Invalid result format: {result}")
+                key, value = result
+                if key not in grouped_player_data:
+                    grouped_player_data[key] = []
+                grouped_player_data[key].append(value)
 
-            # Combine results
-            reduced_data = {}
-            for key, value in processed_results:
-                print(key)
-                if key not in reduced_data:
-                    reduced_data[key] = value
-                else:
-                    # Aggregate values (example: summing numerical stats)
-                    for stat, stat_value in value.items():
-                        if isinstance(stat_value, (int, float)):
-                            reduced_data[key][stat] += stat_value
+            reduced_player_results = {}
+            for key, values in grouped_player_data.items():
+                reduced_player_results[key] = self.reduce_aggregate(key, values, self.reduce_config["aggregation_config"])
 
-            print(f"Reduced data: {reduced_data}")
+            print(f"Reduced data: {reduced_player_results}")
             result_path = "reduce_result.json"
             with open(result_path, "w") as f:
-                json.dump(reduced_data, f)
-            return reduced_data
+                json.dump(reduced_player_results, f)
+            return reduced_player_results
 
         except Exception as e:
             print(f"Error in reduce: {e}")
             raise
 
 
-
-    @dispatcher.add_method
-    def reduce2(self, header_list=None, payload=None):
+    def map_extract_key_value(self, record, key_config, value_config, encoding_config=None):
         """
-        Execute the Reduce function for results.
+        Extract key-value pairs based on map configuration.
         """
-        # Deserialize the map_results
-        print("Running reduce")
-        print(payload)
-        try:
-            map_results = bytes.fromhex(payload).decode('utf-8')
-            map_results = json.loads(map_results)
-            print(type(map_results))
-            # print(map_results)
-            for result in map_results:
-                # print(f"Processing entry: {result}, type: {type(result)}")
-                # Check if result is a valid key-value pair
-                if isinstance(result, list) and len(result) == 2:
-                    key, value = result  # Unpack key and value
-                    # print(f"Valid entry: {key}, {value}")
-                # else:
-                #     print(f"Invalid entry detected: {result}")
-            # map_results = json.loads(map_results)
-            if isinstance(map_results, list) and len(map_results) == 1 and isinstance(map_results[0], str):
-                # map_results = json.loads(map_results[0])  # Parse the inner string as JSON
-                map_results = bytes.fromhex(map_results[0]).decode('utf-8')
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Error decoding JSON payload: {e}")
+        key = self._extract_key(record, key_config, encoding_config)
+        value = self._extract_value(record, value_config, encoding_config)
+        return key, value
 
-        # print("Parsed map results:", map_results)
+    def _extract_key(self, record, key_config, encoding_config):
+        if isinstance(key_config, tuple):  # Composite key
+            return tuple(
+                encoding_config[col].get(record.get(col, None), 0) if col in encoding_config else record.get(col, None)
+                for col in key_config
+            )
+        else:  # Single key
+            return (
+                encoding_config[key_config].get(record.get(key_config, None), 0)
+                if key_config in encoding_config
+                else record.get(key_config, None)
+            )
 
-        # Process the map results
-        grouped_data = {}
-        for result in map_results:
-            try:
-                key, value = result  # Unpack each key-value pair
-                if key not in grouped_data:
-                    grouped_data[key] = []
-                grouped_data[key].append(value)
-            except ValueError as e:
-                raise ValueError(f"Error unpacking map result: {result}, {e}")
+    def _extract_value(self, record, value_config, encoding_config):
+        value = {}
+        for field, config in value_config.items():
+            if isinstance(config, str):  # Direct mapping
+                value[field] = record.get(config, None)
+            elif isinstance(config, tuple):  # Calculated field
+                col1, col2, operation = config
+                val1 = float(record.get(col1, 0))
+                val2 = float(record.get(col2, 1))  # Default to 1 to avoid division by zero
+                if operation == "divide" and val2 != 0:
+                    value[field] = val1 / val2
+        return value
 
-        # Reduce logic
-        reduced_results = {}
-        for key, values in grouped_data.items():
-            reduced_results[key] = self.reduce_aggregate(key, values, self.reduce_config["aggregation_config"])
+    def reduce_aggregate(self, key, values, aggregation_config):
+        """
+        Aggregate values for a given key during the Reduce phase.
+        """
+        aggregated = {}
+        sums = {}
+        counts = {}
 
-        # Save results
-        result_path = "reduce_result.json"
-        with open(result_path, "w") as f:
-            json.dump(reduced_results, f)
+        # Initialize sums and counts for aggregation
+        for field, operation in aggregation_config.items():
+            if operation in ["sum", "average"]:
+                sums[field] = 0
+                counts[field] = 0
 
-        return {"status": "success", "result_path": result_path}
+        for value in values:
+            for field, operation in aggregation_config.items():
+                if field in value and value[field] is not None:
+                    if operation == "sum":
+                        sums[field] += float(value[field])
+                    elif operation == "average":
+                        sums[field] += float(value[field])
+                        counts[field] += 1
+                    elif operation == "direct":
+                        aggregated[field] = value[field]
+
+        for field, operation in aggregation_config.items():
+            if operation == "sum":
+                aggregated[field] = sums[field]
+            elif operation == "average" and counts[field] > 0:
+                aggregated[field] = sums[field] / counts[field]
+
+        return aggregated
+
+
+    # @dispatcher.add_method
+    # def reduce2(self, header_list=None, payload=None):
+    #     """
+    #     Execute the Reduce function for results.
+    #     """
+    #     # Deserialize the map_results
+    #     print("Running reduce")
+    #     print(payload)
+    #     try:
+    #         map_results = bytes.fromhex(payload).decode('utf-8')
+    #         map_results = json.loads(map_results)
+    #         print(type(map_results))
+    #         # print(map_results)
+    #         for result in map_results:
+    #             # print(f"Processing entry: {result}, type: {type(result)}")
+    #             # Check if result is a valid key-value pair
+    #             if isinstance(result, list) and len(result) == 2:
+    #                 key, value = result  # Unpack key and value
+    #                 # print(f"Valid entry: {key}, {value}")
+    #             # else:
+    #             #     print(f"Invalid entry detected: {result}")
+    #         # map_results = json.loads(map_results)
+    #         if isinstance(map_results, list) and len(map_results) == 1 and isinstance(map_results[0], str):
+    #             # map_results = json.loads(map_results[0])  # Parse the inner string as JSON
+    #             map_results = bytes.fromhex(map_results[0]).decode('utf-8')
+    #     except json.JSONDecodeError as e:
+    #         raise ValueError(f"Error decoding JSON payload: {e}")
+
+    #     # print("Parsed map results:", map_results)
+
+    #     # Process the map results
+    #     grouped_data = {}
+    #     for result in map_results:
+    #         try:
+    #             key, value = result  # Unpack each key-value pair
+    #             if key not in grouped_data:
+    #                 grouped_data[key] = []
+    #             grouped_data[key].append(value)
+    #         except ValueError as e:
+    #             raise ValueError(f"Error unpacking map result: {result}, {e}")
+
+    #     # Reduce logic
+    #     reduced_results = {}
+    #     for key, values in grouped_data.items():
+    #         reduced_results[key] = self.reduce_aggregate(key, values, self.reduce_config["aggregation_config"])
+
+    #     # Save results
+    #     result_path = "reduce_result.json"
+    #     with open(result_path, "w") as f:
+    #         json.dump(reduced_results, f)
+
+    #     return {"status": "success", "result_path": result_path}
 
 
     # @dispatcher.add_method
@@ -403,73 +564,6 @@ class FileService:
     #         "player_result_path": player_result_path,
     #         "team_result_path": team_result_path
     #     }
-
-    def map_extract_key_value(self, record, key_config, value_config, encoding_config=None):
-        """
-        Extract key-value pairs based on map configuration.
-        """
-        key = self._extract_key(record, key_config, encoding_config)
-        value = self._extract_value(record, value_config, encoding_config)
-        return key, value
-
-    def _extract_key(self, record, key_config, encoding_config):
-        if isinstance(key_config, tuple):  # Composite key
-            return tuple(
-                encoding_config[col].get(record.get(col, None), 0) if col in encoding_config else record.get(col, None)
-                for col in key_config
-            )
-        else:  # Single key
-            return (
-                encoding_config[key_config].get(record.get(key_config, None), 0)
-                if key_config in encoding_config
-                else record.get(key_config, None)
-            )
-
-    def _extract_value(self, record, value_config, encoding_config):
-        value = {}
-        for field, config in value_config.items():
-            if isinstance(config, str):  # Direct mapping
-                value[field] = record.get(config, None)
-            elif isinstance(config, tuple):  # Calculated field
-                col1, col2, operation = config
-                val1 = float(record.get(col1, 0))
-                val2 = float(record.get(col2, 1))  # Default to 1 to avoid division by zero
-                if operation == "divide" and val2 != 0:
-                    value[field] = val1 / val2
-        return value
-
-    def reduce_aggregate(self, key, values, aggregation_config):
-        """
-        Aggregate values for a given key during the Reduce phase.
-        """
-        aggregated = {}
-        sums = {}
-        counts = {}
-
-        # Initialize sums and counts for aggregation
-        for field, operation in aggregation_config.items():
-            if operation in ["sum", "average"]:
-                sums[field] = 0
-                counts[field] = 0
-
-        for value in values:
-            for field, operation in aggregation_config.items():
-                if field in value and value[field] is not None:
-                    if operation == "sum":
-                        sums[field] += float(value[field])
-                    elif operation == "average":
-                        sums[field] += float(value[field])
-                        counts[field] += 1
-                    elif operation == "direct":
-                        aggregated[field] = value[field]
-
-        for field, operation in aggregation_config.items():
-            if operation == "sum":
-                aggregated[field] = sums[field]
-            elif operation == "average" and counts[field] > 0:
-                aggregated[field] = sums[field] / counts[field]
-
-        return aggregated
 
 
 
