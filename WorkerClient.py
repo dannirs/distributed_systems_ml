@@ -25,6 +25,7 @@ class WorkerClient:
         self.start_listening()
 
     def send_message(self, s, request_params):
+        time.sleep(1) 
         jsonrpc = "2.0"
         id = random.randint(1, 40000)
         if "payload" not in request_params["params"] or not request_params["params"]["payload"]:
@@ -50,7 +51,7 @@ class WorkerClient:
                         "id": id
                     }
 
-        # print("reduce request: ", request)
+        print("sending header request: ", request)
         packet = json.dumps(request)
         s.sendall(packet.encode('utf-8'))
         time.sleep(1)  

@@ -127,14 +127,14 @@ class message:
                 if not file_data:
                     break
                 packet = {
-                    # "seq_num": seq_num,
-                    # "finished": False,
+                    "seq_num": seq_num,
+                    "finished": False,
                     "payload": file_data.hex()  # Convert to hex for transport
                 }
                 packets.append(packet)
                 seq_num += 1
 
-        # packets[-1]["finished"] = True
+        packets[-1]["finished"] = True
         print("# of packets: ", len(packets))
         return packets  # Return all packets as a list
 

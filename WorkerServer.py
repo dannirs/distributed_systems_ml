@@ -628,12 +628,14 @@ class WorkerServer:
             is_finished = False
             print("handling client")
             while not is_finished:
+                print("in while loop")
                 # Receive data from the client
                 try:
-                    data = conn.recv(102400).decode('utf-8').replace('\n', '').replace('\r', '')
+                    data = conn.recv(102400).decode('utf-8')
                     if not data:
                         break
-                    buffer += data
+                    print(data)
+                    buffer += data.replace('\n', '').replace('\r', '')
                     print("got data")
                 except Exception as e:
                     print(f"Error receiving data: {e}")
@@ -665,15 +667,40 @@ class WorkerServer:
 
                         # Handle `send_data` for special processing
                         if method == "send_data":
-                            payload_type = packet["params"]["header_list"]["payload_type"]
-                            if payload_type == 2:
-                                payload = conn.recv(1024).decode('utf-8')
-                                json_payload = json.loads(payload)
-                                packet["params"].update(json_payload["params"])
+                            if "header_list" in packet["params"]:
+                                payload_type = packet["params"]["header_list"]["payload_type"]
+                                if payload_type != 2:
+                                    response = JSONRPCResponseManager.handle(json.dumps(packet), dispatcher)
+                                    conn.sendall(response.json.encode('utf-8'))
+                                    return
+                            if headers is None:
+                                headers = packet.get("params", {}).get("header_list", {})
+                                print("store headers: ", headers)
+                                
+                        if method == "send_data" and "finished" in packet["params"]:
+                            print("processing file")
+                            print(packet)
+                            seq_num = packet.get("params", {}).get("seq_num")
+                            payload = packet.get("params", {}).get("payload")
+                            finished = packet.get("params", {}).get("finished", False)
 
-                            response = JSONRPCResponseManager.handle(json.dumps(packet), dispatcher)
-                            conn.sendall(response.json.encode('utf-8'))
-                            return
+                            if payload is not None:
+                                collected_payloads.append((seq_num, payload))
+
+                            if finished:
+                                is_finished = True
+                                print("is finished")
+                                break
+                            
+                            # if payload_type == 2:
+                            #     payload = conn.recv(1024).decode('utf-8')
+                            #     json_payload = json.loads(payload)
+                            #     packet["params"].update(json_payload["params"])
+                            
+
+                            # response = JSONRPCResponseManager.handle(json.dumps(packet), dispatcher)
+                            # conn.sendall(response.json.encode('utf-8'))
+                            # return
 
                         # Handle methods requiring multiple packets (map/reduce)
                         if method in ["map", "reduce"]:
@@ -704,6 +731,29 @@ class WorkerServer:
                         print(f"JSON decoding error: {e}")
                         buffer += packet  # Re-add to buffer if incomplete
                         continue
+
+            # Finalize and send aggregated payload
+            if method == "send_data":
+                print("collecting packets")
+                print("headers: ", headers)
+                collected_payloads.sort(key=lambda x: x[0])  # Sort by sequence number
+                aggregated_payload = ''.join(payload for _, payload in collected_payloads)
+                print(aggregated_payload)
+
+
+                # Create the RPC request
+                rpc_request = {
+                    "jsonrpc": "2.0",
+                    "method": method,
+                    "params": {
+                        "header_list": headers,
+                        "payload": aggregated_payload
+                    },
+                    "id": 1
+                }
+
+                response = JSONRPCResponseManager.handle(json.dumps(rpc_request), dispatcher)
+                conn.sendall(response.json.encode('utf-8'))
 
             # Finalize combined payload for map/reduce
             if method in ["map", "reduce"] and headers and is_finished:
