@@ -166,7 +166,7 @@ class message:
                 packets[-1]["finished"] = True
 
             return packets
-
+#  2520 * 1024 
         else:
             with open(file_path, 'rb') as file:
                 payload = ""

@@ -58,6 +58,38 @@ import csv
 # Deploy on cloud (can test it out if I have time) --> simple way is to need 4 images, 1 for each node, just run each container image
 # a better way is to create 1 image, and run 4 containers, but each container is different (needs to be configured)
 
+class LinearRegression:
+    def __init__(self):
+        self.coefficients = []
+        self.intercept = 0
+
+    def fit(self, X, y):
+        """
+        Train a linear regression model.
+        """
+        n, m = len(X), len(X[0])  # Number of samples and features
+        X = [[1] + row for row in X]  # Add intercept column
+        XT = [[X[j][i] for j in range(n)] for i in range(m + 1)]  # Transpose X
+        XTX = [[sum(XT[i][k] * X[k][j] for k in range(n)) for j in range(m + 1)] for i in range(m + 1)]
+        XTy = [sum(XT[i][k] * y[k] for k in range(n)) for i in range(m + 1)]
+
+        # Solve the normal equation (XTX * coefficients = XTy)
+        coefficients = [0] * (m + 1)
+        for i in range(m + 1):
+            coefficients[i] = XTy[i] / (XTX[i][i] if XTX[i][i] != 0 else 1)
+
+        self.intercept = coefficients[0]
+        self.coefficients = coefficients[1:]
+
+    def predict(self, X):
+        """
+        Predict using the linear regression model.
+        """
+        return [self.intercept + sum(x[i] * self.coefficients[i] for i in range(len(x))) for x in X]
+
+
+
+
 class FileService:
     def __init__(self, server):
         encoding_config = {
@@ -125,226 +157,291 @@ class FileService:
                 "rebounds_per_minute": "average"  # Calculate average rebounds per minute
             }
         }
+        self.team_encoding = {
+            "ATL": 1, "BOS": 2, "CHA": 3, "CHI": 4, "CLE": 5, "DAL": 6, "DEN": 7, "DET": 8,
+            "GSW": 9, "HOU": 10, "IND": 11, "LAC": 12, "LAL": 13, "MEM": 14, "MIA": 15, "MIL": 16,
+            "MIN": 17, "NOP": 18, "NYK": 19, "BKN": 20, "OKC": 21, "ORL": 22, "PHI": 23, "PHO": 24,
+            "POR": 25, "SAC": 26, "SAS": 27, "TOR": 28, "UTA": 29, "WAS": 30
+        }
+
         self.server = server
         self.map_config_player = map_config_player  # Import or define map config
         self.reduce_config = reduce_config          # Import or define reduce config
         self.encoding_config = encoding_config      # Import or define encoding config
         self.map_config_team = map_config_team
 
+
     @dispatcher.add_method
     def map(self, header_list=None, payload=None):
-        key = header_list["key"]
-        data_chunk = self.load_file(key)  # Load file (JSON/CSV)
-
-        # Filter players by teams playing
-        data_chunk = [
-            record for record in data_chunk if record["Team"] in teams_playing
-        ]
-
-        player_results = []
-        training_data = []
-        target_data = []
-
-        for record in data_chunk:
-            # Original map logic
-            player_key, player_value = self.map_extract_key_value(
-                record,
-                self.map_config_player["key_config"],
-                self.map_config_player["value_config"],
-                self.encoding_config
-            )
-
-            # Calculate fantasy points
-            fantasy_points = sum(
-                scoring_config[field] * float(player_value.get(field, 0))
-                for field in scoring_config
-            )
-            player_value["fantasy_points"] = fantasy_points
-
-            # Extract player salary
-            player_name = record.get("Player")
-            player_value["salary"] = salary_config.get(player_name, 0)
-
-            # Prepare data for linear regression
-            feature_vector = [
-                player_value.get("games", 0),
-                player_value.get("minutes", 0),
-                player_value.get("points", 0),
-                player_value.get("rebounds", 0),
-                player_value.get("assists", 0),
-            ]
-            training_data.append(feature_vector)
-            target_data.append(fantasy_points)
-
-            player_results.append((player_key, player_value))
-
-        # Train linear regression model on the chunk
-        lr_model = self.train_linear_regression(training_data, target_data)
-
-        # Save model and results
-        result_path = f"map_result_{os.path.basename(key)}.json"
-        model_path = f"lr_model_{os.path.basename(key)}.json"
-        with open(result_path, "w") as f:
-            json.dump(player_results, f)
-        with open(model_path, "w") as f:
-            json.dump(lr_model, f)  # Save model coefficients/intercept
-
-        return {"status": "success", "result_path": result_path, "model_path": model_path}
-
-    def train_linear_regression(self, X, y):
-        # Gradient Descent Parameters
-        learning_rate = 0.01
-        num_iterations = 1000
-        num_features = len(X[0])
-
-        # Initialize weights and bias
-        weights = [0.0] * num_features
-        bias = 0.0
-
-        # Gradient Descent
-        for _ in range(num_iterations):
-            weight_gradients = [0.0] * num_features
-            bias_gradient = 0.0
-
-            for i in range(len(X)):
-                prediction = sum(w * x for w, x in zip(weights, X[i])) + bias
-                error = prediction - y[i]
-
-                for j in range(num_features):
-                    weight_gradients[j] += error * X[i][j]
-                bias_gradient += error
-
-            weights = [w - learning_rate * grad / len(X) for w, grad in zip(weights, weight_gradients)]
-            bias -= learning_rate * bias_gradient / len(X)
-
-        return {"weights": weights, "bias": bias}
-
-
-    @dispatcher.add_method
-    def map(self,  header_list=None, payload=None):
         """
-        Execute the Map function for the given file chunk and process both player and team levels.
-
-        Args:
-            file_chunk (str): Path to the file chunk to process.
-
-        Returns:
-            dict: Status and paths to the output files.
+        RPC Method: Map phase to preprocess data and train a Linear Regression model.
         """
-        key = header_list["key"]
-        payload_type = header_list["payload_type"]
-        print(f"Processing Map task for {key} at both player and team levels")
-
-        # Detect file type based on extension
-        _, file_extension = os.path.splitext(key)
-        file_extension = file_extension.lower()
-
-        # Initialize data chunk
-        data_chunk = []
-
         try:
-            if file_extension == ".csv":
-                # Load data from a CSV file
-                with open(key, 'r') as chunk_file:
-                    csv_reader = csv.DictReader(chunk_file)
-                    data_chunk = [row for row in csv_reader]
+            output_path, model, X, y = self.process_chunk(file_path)
+            self.server.file_store[output_path] = {"file_path": output_path}
 
-            elif file_extension == ".json":
-                # Load data from a JSON file
-                with open(key, 'r') as chunk_file:
-                    data_chunk = json.loads(chunk_file)  # Assuming the JSON file is a list of records
-
-            else:
-                raise ValueError(f"Unsupported file type: {file_extension}")
-
+            return {"status": "success", "map_result_path": output_path}
         except Exception as e:
-            print(f"Error loading file {key}: {e}")
+            print(f"Error in map: {e}")
             return {"status": "failure", "error": str(e)}
 
-        # Initialize result containers
-        player_results = []
-        team_results = []
-
-        # Process each record for both configurations
-        for record in data_chunk:
-            # Player-Level Aggregation
-            player_key, player_value = self.map_extract_key_value(
-                record,
-                self.map_config_player["key_config"],
-                self.map_config_player["value_config"],
-                self.encoding_config
-            )
-            player_results.append((player_key, player_value))
-
-            # Team-Level Aggregation
-            team_key, team_value = self.map_extract_key_value(
-                record,
-                self.map_config_team["key_config"],
-                self.map_config_team["value_config"],
-                self.encoding_config
-            )
-            team_results.append((team_key, team_value))
-
-        # Save results locally for both levels
-        player_result_path = f"map_result_player_{os.path.basename(key)}.json"
-        team_result_path = f"map_result_team_{os.path.basename(key)}.json"
-
-        with open(player_result_path, "w") as f:
-            json.dump(player_results, f)
-        with open(team_result_path, "w") as f:
-            json.dump(team_results, f)
-        self.send_data_location(player_result_path)
-        self.send_data_location(team_result_path)
-        self.server.file_store[player_result_path] = (payload_type, player_result_path)
-        self.server.file_store[team_result_path] = (payload_type, team_result_path)
-        return {
-            "status": "success",
-            "player_result_path": player_result_path,
-            "team_result_path": team_result_path
-        }
-
-    def reduce(self, header_list=None, payload=None):
+    def process_chunk(self, file_path):
+        """
+        Preprocess data, train the model, and save intermediate results.
+        """
         try:
-            # Get the payload from params
-            results = payload
-            # print(f"Initial results: {results}")
+            # Load the data chunk
+            with open(file_path, 'r', encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile)
+                data_chunk = list(reader)
 
-            # Decode payload if it's a hex string
-            if isinstance(results, str):
-                print("IS STRING")
-                try:
-                    # If results is a single string, decode it as JSON
-                    results = bytes.fromhex(results).decode('utf-8')
-                    results = json.loads(results)
-                    # print(f"Decoded results: {results}")
-                except json.JSONDecodeError as e:
-                    print(f"Error decoding results: {e}")
-                    return
+            # Preprocess the data
+            processed_data = self.preprocess_data(data_chunk, self.team_encoding)
+            X, y = processed_data["features"], processed_data["target"]
 
-            # Ensure results is now a list
-            if not isinstance(results, list):
-                raise ValueError(f"Expected a list for results, got {type(results)}")
+            # Train the model
+            model = LinearRegression()
+            model.fit(X, y)
 
-            grouped_player_data = {}
-            for result in results:
-                key, value = result
-                if key not in grouped_player_data:
-                    grouped_player_data[key] = []
-                grouped_player_data[key].append(value)
+            # Save model parameters to a file
+            output_path = f"map_output_{os.path.basename(file_path)}.json"
+            with open(output_path, 'w') as f:
+                json.dump({"coefficients": model.coefficients, "intercept": model.intercept}, f)
 
-            reduced_player_results = {}
-            for key, values in grouped_player_data.items():
-                reduced_player_results[key] = self.reduce_aggregate(key, values, self.reduce_config["aggregation_config"])
-
-            print(f"Reduced data: {reduced_player_results}")
-            result_path = "reduce_result.json"
-            with open(result_path, "w") as f:
-                json.dump(reduced_player_results, f)
-            return reduced_player_results
-
+            print(f"Model trained successfully. Output saved to {output_path}")
+            return output_path, model, X, y
         except Exception as e:
-            print(f"Error in reduce: {e}")
-            raise
+            print(f"Error processing chunk: {e}")
+            return None, None, None, None
+
+
+    def preprocess_data(self, data_chunk, team_encoding):
+        """
+        Preprocess raw data for feature extraction and encoding.
+        """
+        features, target = [], []
+        for row in data_chunk:
+            try:
+                player = row["PLAYER_NAME"]
+                team = team_encoding.get(row["TEAM_ABBREVIATION"], 0)
+                opponent = team_encoding.get(row["MATCHUP"][-3:], 0)
+
+                stats = {k: float(row[k]) for k in ["MIN", "REB", "AST", "TOV", "STL", "BLK", "PTS", "NBA_FANTASY_PTS"]}
+                per_minute_stats = {f"{k}_PER_MIN": v / stats["MIN"] if stats["MIN"] > 0 else 0 for k, v in stats.items()}
+
+                features.append([
+                    team, opponent, per_minute_stats["REB_PER_MIN"], per_minute_stats["AST_PER_MIN"],
+                    per_minute_stats["STL_PER_MIN"], per_minute_stats["BLK_PER_MIN"], per_minute_stats["PTS_PER_MIN"]
+                ])
+                target.append(stats["NBA_FANTASY_PTS"])
+
+            except Exception as e:
+                print(f"Error processing row: {e}")
+                continue
+
+        return {"features": features, "target": target}
+
+
+
+    # @dispatcher.add_method
+    # def map(self,  header_list=None, payload=None):
+    #     """
+    #     Execute the Map function for the given file chunk and process both player and team levels.
+
+    #     Args:
+    #         file_chunk (str): Path to the file chunk to process.
+
+    #     Returns:
+    #         dict: Status and paths to the output files.
+    #     """
+    #     key = header_list["key"]
+    #     payload_type = header_list["payload_type"]
+    #     print(f"Processing Map task for {key} at both player and team levels")
+
+    #     # Detect file type based on extension
+    #     _, file_extension = os.path.splitext(key)
+    #     file_extension = file_extension.lower()
+
+    #     # Initialize data chunk
+    #     data_chunk = []
+
+    #     try:
+    #         if file_extension == ".csv":
+    #             # Load data from a CSV file
+    #             with open(key, 'r') as chunk_file:
+    #                 csv_reader = csv.DictReader(chunk_file)
+    #                 data_chunk = [row for row in csv_reader]
+
+    #         elif file_extension == ".json":
+    #             # Load data from a JSON file
+    #             with open(key, 'r') as chunk_file:
+    #                 data_chunk = json.loads(chunk_file)  # Assuming the JSON file is a list of records
+
+    #         else:
+    #             raise ValueError(f"Unsupported file type: {file_extension}")
+
+    #     except Exception as e:
+    #         print(f"Error loading file {key}: {e}")
+    #         return {"status": "failure", "error": str(e)}
+
+    #     # Initialize result containers
+    #     player_results = []
+    #     team_results = []
+
+    #     # Process each record for both configurations
+    #     for record in data_chunk:
+    #         # Player-Level Aggregation
+    #         player_key, player_value = self.map_extract_key_value(
+    #             record,
+    #             self.map_config_player["key_config"],
+    #             self.map_config_player["value_config"],
+    #             self.encoding_config
+    #         )
+    #         player_results.append((player_key, player_value))
+
+    #         # Team-Level Aggregation
+    #         team_key, team_value = self.map_extract_key_value(
+    #             record,
+    #             self.map_config_team["key_config"],
+    #             self.map_config_team["value_config"],
+    #             self.encoding_config
+    #         )
+    #         team_results.append((team_key, team_value))
+
+    #     # Save results locally for both levels
+    #     player_result_path = f"map_result_player_{os.path.basename(key)}.json"
+    #     team_result_path = f"map_result_team_{os.path.basename(key)}.json"
+
+    #     with open(player_result_path, "w") as f:
+    #         json.dump(player_results, f)
+    #     with open(team_result_path, "w") as f:
+    #         json.dump(team_results, f)
+    #     self.send_data_location(player_result_path)
+    #     self.send_data_location(team_result_path)
+    #     self.server.file_store[player_result_path] = (payload_type, player_result_path)
+    #     self.server.file_store[team_result_path] = (payload_type, team_result_path)
+    #     return {
+    #         "status": "success",
+    #         "player_result_path": player_result_path,
+    #         "team_result_path": team_result_path
+    #     }
+
+    # @dispatcher.add_method
+    # def map(self, header_list=None, payload=None):
+    #     """
+    #     Map Phase: Process data chunk and train a linear regression model.
+    #     """
+    #     file_path = header_list["key"]
+    #     print(f"Processing Map task for file: {file_path}")
+
+    #     try:
+    #         # Call the updated process_chunk function
+    #         output_path, model, X, y = self.process_chunk(file_path)
+            
+    #         print(f"Map Phase completed. Output saved to: {output_path}")
+            
+    #         # Store the map result locally for reduce phase
+    #         self.server.file_store[output_path] = ("map_result", output_path)
+            
+    #         return {
+    #             "status": "success",
+    #             "output_path": output_path,
+    #             "model": {"coefficients": model.coefficients, "intercept": model.intercept}
+    #         }
+    #     except Exception as e:
+    #         print(f"Error in Map Phase: {e}")
+    #         return {"status": "failure", "error": str(e)}
+
+
+    def combine_models(self, map_outputs):
+        """
+        Reduce Phase: Combine models from the map phase.
+        """
+        combined_model = {"coefficients": [], "intercept": 0}
+        total_data_points = 0
+
+        for output in map_outputs:
+            with open(output, 'r') as f:
+                model = json.load(f)
+                combined_model["coefficients"].append(model["coefficients"])
+                combined_model["intercept"] += model["intercept"]
+                total_data_points += 1
+
+        combined_model["coefficients"] = [sum(x) / total_data_points for x in zip(*combined_model["coefficients"])]
+        combined_model["intercept"] /= total_data_points
+
+        # with open("combined_model.json", "w") as f:
+        #     json.dump(combined_model, f)
+
+        return combined_model
+
+    @dispatcher.add_method
+    def reduce(self, header_list=None, payload=None):
+        """
+        Reduce Phase: Combine models from all map outputs.
+        """
+        map_outputs = [entry[1] for entry in self.server.file_store.values() if entry[0] == "map_result"]
+        print(f"Map outputs to reduce: {map_outputs}")
+
+        try:
+            combined_model = self.combine_models(map_outputs)
+            
+            # Save combined model
+            result_path = "combined_model.json"
+            with open(result_path, "w") as f:
+                json.dump(combined_model, f)
+            
+            print(f"Reduce Phase completed. Combined model saved to: {result_path}")
+            
+            return {"status": "success", "result_path": result_path}
+        except Exception as e:
+            print(f"Error in Reduce Phase: {e}")
+            return {"status": "failure", "error": str(e)}
+
+
+    # @dispatcher.add_method
+    # def reduce(self, header_list=None, payload=None):
+    #     try:
+    #         # Get the payload from params
+    #         results = payload
+    #         # print(f"Initial results: {results}")
+
+    #         # Decode payload if it's a hex string
+    #         if isinstance(results, str):
+    #             print("IS STRING")
+    #             try:
+    #                 # If results is a single string, decode it as JSON
+    #                 results = bytes.fromhex(results).decode('utf-8')
+    #                 results = json.loads(results)
+    #                 # print(f"Decoded results: {results}")
+    #             except json.JSONDecodeError as e:
+    #                 print(f"Error decoding results: {e}")
+    #                 return
+
+    #         # Ensure results is now a list
+    #         if not isinstance(results, list):
+    #             raise ValueError(f"Expected a list for results, got {type(results)}")
+
+    #         grouped_player_data = {}
+    #         for result in results:
+    #             key, value = result
+    #             if key not in grouped_player_data:
+    #                 grouped_player_data[key] = []
+    #             grouped_player_data[key].append(value)
+
+    #         reduced_player_results = {}
+    #         for key, values in grouped_player_data.items():
+    #             reduced_player_results[key] = self.reduce_aggregate(key, values, self.reduce_config["aggregation_config"])
+
+    #         print(f"Reduced data: {reduced_player_results}")
+    #         result_path = "reduce_result.json"
+    #         with open(result_path, "w") as f:
+    #             json.dump(reduced_player_results, f)
+    #         return reduced_player_results
+
+    #     except Exception as e:
+    #         print(f"Error in reduce: {e}")
+    #         raise
 
 
     def map_extract_key_value(self, record, key_config, value_config, encoding_config=None):
