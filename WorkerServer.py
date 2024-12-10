@@ -11,6 +11,10 @@ import csv
 import math
 import re
 
+# do servers store files in their own directories?
+# should reduce phase return the actual results, or just the model parameters? 
+
+
 # write a script so that instead of the workers being started by MasterNode, use the script to start
 # the workers when the configs are located in different directories. Configuration file
 # names should be the same.
