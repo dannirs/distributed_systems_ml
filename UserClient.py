@@ -4,6 +4,7 @@ import random
 import os
 import argparse
 import csv
+import chardet
 
 # 1. Set up the script to run configs in different directories
 # 2. Finish debugging Reduce phase 
@@ -141,7 +142,14 @@ class UserClient:
                         base_name, ext = os.path.splitext(file_path)
                         chunk_id = 0
 
-                        with open(file_path, 'r') as csv_file:
+
+
+                        # with open(file_path, "rb") as file:
+                        #     data = file.read()
+                        #     result = chardet.detect(data)
+                        #     print(result['encoding'])
+
+                        with open(file_path, 'r', newline='', encoding="utf-8") as csv_file:
                             reader = csv.reader(csv_file)
                             header = next(reader)  # Extract the header row
 
@@ -153,7 +161,7 @@ class UserClient:
                                 if chunk_size + row_size > max_chunk_size:
                                     # Write current chunk to a file
                                     chunk_file_name = f"{base_name}_part{chunk_id + 1}{ext}"
-                                    with open(chunk_file_name, 'w', newline='') as chunk_file:
+                                    with open(chunk_file_name, 'w', newline='', encoding='utf-8') as chunk_file:
                                         writer = csv.writer(chunk_file)
                                         writer.writerow(header)  # Write the header
                                         writer.writerows(chunk_rows)  # Write the rows
@@ -180,7 +188,7 @@ class UserClient:
                             # Write the last chunk if it exists
                             if chunk_rows:
                                 chunk_file_name = f"{base_name}_part{chunk_id + 1}{ext}"
-                                with open(chunk_file_name, 'w', newline='') as chunk_file:
+                                with open(chunk_file_name, 'w', newline='', encoding='utf-8') as chunk_file:
                                     writer = csv.writer(chunk_file)
                                     writer.writerow(header)  # Write the header
                                     writer.writerows(chunk_rows)  # Write the rows

@@ -1,5 +1,6 @@
 import os
 import json
+import csv
 
 class message:
     def __init__(self, method, source_port, destination_port, header_list, payload=None):
@@ -82,6 +83,7 @@ class message:
             raise ValueError("Missing parameters for request")
         if "payload_type" not in self.header_list or not self.header_list["payload_type"]:
             raise ValueError("Missing parameters for request")
+        print(self.header_list)
         return self.header_list
     
     def resp_preprocess_send_data(self):
@@ -147,6 +149,12 @@ class message:
         if self.check_file_type(file_path) == "json":
             with open(file_path, 'r') as file:
                 json_data = json.load(file)  # Load entire JSON file
+                print(json_data)
+                if isinstance(json_data, dict):
+                    # If the JSON is a dictionary, decide how to handle it
+                    raise ValueError("Is not a list.")  # Adjust "data" as needed based on your structure
+                elif not isinstance(json_data, list):
+                    raise ValueError("JSON file does not contain a list or processable data.")
 
             # Batch the data
             for i in range(0, len(json_data), batch_size):
@@ -167,6 +175,79 @@ class message:
 
             return packets
 #  2520 * 1024 
+
+        elif self.check_file_type(file_path) == "csv":
+            packets = []
+            seq_num = 0
+
+            # Check if the file is CSV
+            with open(file_path, 'r', encoding="utf-8", newline='') as file:
+                csv_reader = csv.DictReader(file)  # Parse CSV into dictionaries
+                csv_data = [row for row in csv_reader]  # Convert to list of dicts
+
+            # Batch the data
+            for i in range(0, len(csv_data), batch_size):
+                batch = csv_data[i:i + batch_size]  # Create a batch of items
+                
+                # Serialize the batch as JSON but DO NOT HEX ENCODE here
+                payload = json.dumps(batch, ensure_ascii=False)  # Create JSON string
+
+                # Verify payload is valid JSON
+                try:
+                    payload_json = json.loads(payload)  # Parse it back to ensure validity
+                    print("PAYLOAD JSON VALIDATED: ", payload_json)
+                except json.JSONDecodeError as e:
+                    print("INVALID JSON IN MESSAGE: ", e)
+                    continue
+                # Create the packet
+                payload_bytes = payload.encode('utf-8')  # Encode JSON string to bytes
+                payload_hex = payload_bytes.hex()  # Convert bytes to hex string
+                packet = {
+                    "seq_num": seq_num,
+                    "finished": False,
+                    "payload": payload_hex  # Keep the payload as a JSON string
+                }
+                packets.append(packet)
+                seq_num += 1
+
+            # Mark the last packet as finished
+            if packets:
+                packets[-1]["finished"] = True
+
+            return packets
+
+
+
+        # elif self.check_file_type(file_path) == "csv":
+        #     with open(file_path, 'r', encoding="utf-8", newline='') as file:
+        #         csv_reader = csv.DictReader(file)  # Parse CSV into dictionaries
+        #         csv_data = [row for row in csv_reader]  # Convert to list of dicts
+
+        #     # Batch the data
+        #     for i in range(0, len(csv_data), batch_size):
+        #         batch = csv_data[i:i + batch_size]  # Create a batch of items
+        #         payload = json.dumps(batch).encode('utf-8').hex()  # Serialize and encode
+        #         if isinstance(payload, str):
+        #             try:
+        #                 print(payload)
+        #                 payload_json = json.loads(payload)
+        #                 print("PAYLOAD JSON: ", payload_json)
+        #             except json.JSONDecodeError:
+        #                 print("INVALID JSON IN MESSAGE")
+        #                 pass  # It's not JSON-encoded, so leave as-is
+        #         packet = {
+        #             "seq_num": seq_num,
+        #             "finished": False,
+        #             "payload": payload
+        #         }
+        #         packets.append(packet)
+        #         seq_num += 1
+
+        #     # Mark the last packet as finished
+        #     if packets:
+        #         packets[-1]["finished"] = True
+
+        #     return packets
         else:
             with open(file_path, 'rb') as file:
                 payload = ""

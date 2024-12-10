@@ -8,6 +8,8 @@ import time
 import random
 import os
 import csv
+import math
+import re
 
 # write a script so that instead of the workers being started by MasterNode, use the script to start
 # the workers when the configs are located in different directories. Configuration file
@@ -176,43 +178,203 @@ class FileService:
         """
         RPC Method: Map phase to preprocess data and train a Linear Regression model.
         """
-        try:
-            output_path, model, X, y = self.process_chunk(file_path)
-            self.server.file_store[output_path] = {"file_path": output_path}
+        print("IN MAP")
+        key = header_list["key"]
+        payload_type = header_list["payload_type"]
+        print(f"Processing Map task for {key} at both player and team levels")
 
-            return {"status": "success", "map_result_path": output_path}
+        # # Detect file type based on extension
+        # _, file_extension = os.path.splitext(key)
+        # file_extension = file_extension.lower()
+
+        # # Initialize data chunk
+        # data_chunk = []
+
+        # try:
+        #     if file_extension == ".csv":
+        #         # Load data from a CSV file
+        #         with open(key, 'r') as chunk_file:
+        #             csv_reader = csv.DictReader(chunk_file)
+        #             data_chunk = [row for row in csv_reader]
+
+        #     elif file_extension == ".json":
+        #         # Load data from a JSON file
+        #         with open(key, 'r') as chunk_file:
+        #             data_chunk = json.loads(chunk_file)  # Assuming the JSON file is a list of records
+
+        #     else:
+        #         raise ValueError(f"Unsupported file type: {file_extension}")
+
+        # except Exception as e:
+        #     print(f"Error loading file {key}: {e}")
+        #     return {"status": "failure", "error": str(e)}
+
+        try:
+            output_path, model, X, y = self.process_chunk(header_list, payload)
+            self.server.file_store[output_path] = (payload_type, output_path)
+            self.send_data_location(output_path)
+            return {"status": "success", "player_result_path": output_path}
         except Exception as e:
             print(f"Error in map: {e}")
             return {"status": "failure", "error": str(e)}
 
-    def process_chunk(self, file_path):
+    def process_chunk(self, header_list, data_chunk):
         """
         Preprocess data, train the model, and save intermediate results.
         """
-        try:
+        # try:
             # Load the data chunk
-            with open(file_path, 'r', encoding='utf-8') as csvfile:
-                reader = csv.DictReader(csvfile)
-                data_chunk = list(reader)
+            # with open(file_path, 'r', encoding='utf-8') as csvfile:
+            #     reader = csv.DictReader(csvfile)
+            #     data_chunk = list(reader)
 
-            # Preprocess the data
-            processed_data = self.preprocess_data(data_chunk, self.team_encoding)
-            X, y = processed_data["features"], processed_data["target"]
 
-            # Train the model
+        team_encoding = {"ATL": 1, "BOS": 2, "CHA": 3, "CHI": 4, "CLE": 5, "DAL": 6, "DEN": 7, "DET": 8,
+                        "GSW": 9, "HOU": 10, "IND": 11, "LAC": 12, "LAL": 13, "MEM": 14, "MIA": 15, "MIL": 16,
+                        "MIN": 17, "NOP": 18, "NYK": 19, "BKN": 20, "OKC": 21, "ORL": 22, "PHI": 23, "PHO": 24,
+                        "POR": 25, "SAC": 26, "SAS": 27, "TOR": 28, "UTA": 29, "WAS": 30}
+        data = {}
+        
+        if isinstance(data_chunk, str):
+            print("IS STRING")
+            try:
+                # Attempt to encode and decode as UTF-8
+                data_chunk.encode('utf-8').decode('utf-8')
+                print("is utf-8")
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                print("is not utf-8")
+                return False
+            hex_pattern = re.fullmatch(r'[0-9a-fA-F]+', data_chunk)
+            if not hex_pattern:
+                print("Not hex")
+            try:
+                # If results is a single string, decode it as JSON
+                # data_chunk = bytes.fromhex(data_chunk).decode('utf-8')
+                data_chunk = json.loads(data_chunk)
+                # print(f"Decoded results: {results}")
+            except json.JSONDecodeError as e:
+                print(f"Error decoding results: {e}")
+                return
+
+        # Ensure results is now a list
+        if not isinstance(data_chunk, list):
+            raise ValueError(f"Expected a list for results, got {type(data_chunk)}")
+
+
+        try:
+            print("Processing JSON data...")
+            print("DATA CHUNK1: ", data_chunk)
+            # data_chunk = json.loads(data_chunk)
+            print("DATA_CHUNK2: ", data_chunk)
+            for row in data_chunk:
+                print(row)
+                try:
+                    player = row["PLAYER_NAME"]
+                    team = team_encoding.get(row["TEAM_ABBREVIATION"], 0)
+                    opponent = team_encoding.get(row["MATCHUP"][-3:], 0)
+
+                    stats = {k: float(row[k]) for k in ["MIN", "REB", "AST", "TOV", "STL", "BLK", "PTS", "NBA_FANTASY_PTS"]}
+                    per_minute_stats = {f"{k}_PER_MIN": v / stats["MIN"] if stats["MIN"] > 0 else 0 for k, v in stats.items()}
+
+                    if player not in data:
+                        data[player] = {"count": 1, **stats, **per_minute_stats, "TEAM": team, "OPPONENT": opponent}
+                    else:
+                        data[player]["count"] += 1
+                        for k in stats:
+                            data[player][k] += stats[k]
+
+                    print(f"Processed row for player: {player}")
+
+                except Exception as e:
+                    # print(f"Skipping row due to error: {e}")
+                    continue
+
+            print(f"Finished processing JSON data. Total players processed: {len(data)}")
+
+            if not data:
+                raise ValueError("No valid data processed from the JSON.")
+
+            # Prepare training data
+            X, y = [], []
+            preprocessed_data = []
+            print("Preparing training data...")
+            for player, stats in data.items():
+                try:
+                    averages = {k: v / stats["count"] for k, v in stats.items() if k not in ["count", "TEAM", "OPPONENT"]}
+                    X_row = [
+                        averages.get(k, 0)
+                        for k in ["REB_PER_MIN", "AST_PER_MIN", "STL_PER_MIN", "BLK_PER_MIN", "PTS_PER_MIN"]
+                    ]
+                    X_row.extend([stats["TEAM"], stats["OPPONENT"]])
+                    X.append(X_row)
+                    y.append(averages.get("NBA_FANTASY_PTS", 0))
+
+                    preprocessed_data.append({
+                        "PLAYER_NAME": player,
+                        **averages,
+                        "TEAM": stats["TEAM"],
+                        "OPPONENT": stats["OPPONENT"]
+                    })
+
+                    print(f"Prepared data for player: {player}")
+
+                except Exception as e:
+                    print(f"Error processing player {player}: {e}")
+                    continue
+
+            preprocessed_file_path = f"preprocessed_{os.path.basename(header_list['key'])}.json"
+            with open(preprocessed_file_path, 'w', encoding='utf-8') as f:
+                json.dump(preprocessed_data, f, indent=4)
+            print(f"Preprocessed data saved to {preprocessed_file_path}")
+
+            if not X or not y:
+                raise ValueError("Training data X or y is empty.")
+
+            print("Training linear regression model...")
             model = LinearRegression()
             model.fit(X, y)
+            print("Model trained successfully.")
 
-            # Save model parameters to a file
-            output_path = f"map_output_{os.path.basename(file_path)}.json"
+            output_path = f"map_output_{os.path.basename(header_list['key'])}.json"
+            print(f"Saving model parameters to: {output_path}")
             with open(output_path, 'w') as f:
-                json.dump({"coefficients": model.coefficients, "intercept": model.intercept}, f)
+                print(f"Model coefficients: {model.coefficients}")
+                print(f"Model intercept: {model.intercept}")
+                json.dump([{"coefficients": model.coefficients, "intercept": model.intercept}], f)
 
-            print(f"Model trained successfully. Output saved to {output_path}")
+            print(f"Map output saved to {output_path}")
+
             return output_path, model, X, y
+
         except Exception as e:
-            print(f"Error processing chunk: {e}")
-            return None, None, None, None
+            print(f"Error processing JSON: {e}")
+            return None
+
+
+        #     print(data_chunk)
+        #     # Preprocess the data
+        #     processed_data = self.preprocess_data(data_chunk, self.team_encoding)
+        #     X, y = processed_data["features"], processed_data["target"]
+
+        #     preprocessed_file_path = f"preprocessed_{os.path.basename(header_list['key'])}.json"
+        #     with open(preprocessed_file_path, 'w', encoding='utf-8') as f:
+        #         json.dump({processed_data}, f, indent=4)
+        #     print(f"Preprocessed data saved to {preprocessed_file_path}")
+
+        #     # Train the model
+        #     model = LinearRegression()
+        #     model.fit(X, y)
+
+        #     # Save model parameters to a file
+        #     output_path = f"map_output_{os.path.basename(header_list['key'])}.json"
+        #     with open(output_path, 'w') as f:
+        #         json.dump({"coefficients": model.coefficients, "intercept": model.intercept}, f)
+
+        #     print(f"Model trained successfully. Output saved to {output_path}")
+        #     return output_path, model, X, y
+        # except Exception as e:
+        #     print(f"Error processing chunk: {e}")
+        #     return None, None, None, None
 
 
     def preprocess_data(self, data_chunk, team_encoding):
@@ -236,9 +398,9 @@ class FileService:
                 target.append(stats["NBA_FANTASY_PTS"])
 
             except Exception as e:
-                print(f"Error processing row: {e}")
+                # print(f"Error processing row: {e}")
                 continue
-
+        
         return {"features": features, "target": target}
 
 
@@ -353,38 +515,96 @@ class FileService:
     #         return {"status": "failure", "error": str(e)}
 
 
-    def combine_models(self, map_outputs):
+    def combine_models(self, payload):
         """
         Reduce Phase: Combine models from the map phase.
         """
+        print("in combine_models")
         combined_model = {"coefficients": [], "intercept": 0}
         total_data_points = 0
 
-        for output in map_outputs:
-            with open(output, 'r') as f:
-                model = json.load(f)
+        try:
+            # Ensure payload is a valid JSON object
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+
+            if not isinstance(payload, list):
+                raise ValueError("Payload must be a list of model objects.")
+
+            for model in payload:
+                if not isinstance(model, dict):
+                    raise ValueError("Each model in the payload must be a dictionary.")
+                if "coefficients" not in model or "intercept" not in model:
+                    raise KeyError("Each model must contain 'coefficients' and 'intercept'.")
+
                 combined_model["coefficients"].append(model["coefficients"])
                 combined_model["intercept"] += model["intercept"]
                 total_data_points += 1
 
-        combined_model["coefficients"] = [sum(x) / total_data_points for x in zip(*combined_model["coefficients"])]
-        combined_model["intercept"] /= total_data_points
+            # Average the coefficients and intercepts
+            combined_model["coefficients"] = [
+                sum(x) / total_data_points for x in zip(*combined_model["coefficients"])
+            ]
+            combined_model["intercept"] /= total_data_points
 
-        # with open("combined_model.json", "w") as f:
-        #     json.dump(combined_model, f)
+            return combined_model
 
-        return combined_model
+        except Exception as e:
+            print(f"Error in combine_models: {e}")
+            raise
+
+
+        # print("in combine_models")
+        # combined_model = {"coefficients": [], "intercept": 0}
+        # total_data_points = 0
+
+        # for output in map_outputs:
+        #     with open(output, 'r') as f:
+        #         model = json.load(f)
+        #         combined_model["coefficients"].append(model["coefficients"])
+        #         combined_model["intercept"] += model["intercept"]
+        #         total_data_points += 1
+
+        # combined_model["coefficients"] = [sum(x) / total_data_points for x in zip(*combined_model["coefficients"])]
+        # combined_model["intercept"] /= total_data_points
+
+        # # with open("combined_model.json", "w") as f:
+        # #     json.dump(combined_model, f)
+
+        # return combined_model
 
     @dispatcher.add_method
     def reduce(self, header_list=None, payload=None):
         """
         Reduce Phase: Combine models from all map outputs.
         """
-        map_outputs = [entry[1] for entry in self.server.file_store.values() if entry[0] == "map_result"]
-        print(f"Map outputs to reduce: {map_outputs}")
-
+        print("IN REDUCE")
+        print("REDUCE PAYLOAD: ", payload)
         try:
-            combined_model = self.combine_models(map_outputs)
+            # Get the payload from params
+            # print(f"Initial results: {results}")
+
+            # Decode payload if it's a hex string
+            
+            if isinstance(payload, str):
+                print("IS STRING")
+                try:
+                    # If results is a single string, decode it as JSON
+                    payload = bytes.fromhex(payload).decode('utf-8')
+                    payload = json.loads(payload)
+                    print(f"Decoded results: {payload}")
+                except json.JSONDecodeError as e:
+                    print(f"Error decoding results: {e}")
+                    return
+
+            # Ensure results is now a list
+            if not isinstance(payload, list):
+                raise ValueError(f"Expected a list for results, got {type(payload)}")
+
+            # map_outputs = [entry[1] for entry in self.server.file_store.values() if entry[0] == "map_result"]
+            # print(f"Map outputs to reduce: {map_outputs}")
+
+            combined_model = self.combine_models(payload)
             
             # Save combined model
             result_path = "combined_model.json"
@@ -397,7 +617,6 @@ class FileService:
         except Exception as e:
             print(f"Error in Reduce Phase: {e}")
             return {"status": "failure", "error": str(e)}
-
 
     # @dispatcher.add_method
     # def reduce(self, header_list=None, payload=None):
@@ -697,6 +916,7 @@ class FileService:
         key = header_list["key"]
         destination_port = header_list["destination_port"]
         source_port = header_list["source_port"]
+        print("server: ", self.server.file_store)
         if key in self.server.file_store:
             payload_type = self.server.file_store[key][0]
             file_path = self.server.file_store[key][1]
@@ -717,6 +937,7 @@ class FileService:
         )        
         
         response = packet.process_headers()
+        print(response)
 
         if status == 200 and payload_type == 2:
             payload = packet.process_payload()
@@ -903,7 +1124,10 @@ class WorkerServer:
                 for packet in packets:
                     try:
                         # Parse the packet
+                        print("load now")
+                        # print(packet)
                         packet = json.loads(packet)
+                        print("succeed")
 
                         # Extract method from the packet
                         if method is None:
@@ -912,7 +1136,6 @@ class WorkerServer:
                         if method is not None and method == "reduce" and "header_list" not in packet["params"]:
                             payload_json = bytes.fromhex(packet["params"]["payload"]).decode('utf-8')
                             payload = json.loads(payload_json)
-                            print("DECODED PAYLOAD: ", payload)
                             if isinstance(payload, list):  # Check if the outer structure is a list
                                 is_list_of_lists = all(isinstance(item, list) for item in payload)  # Check if all items are lists
 
@@ -960,34 +1183,85 @@ class WorkerServer:
                             # conn.sendall(response.json.encode('utf-8'))
                             # return
 
-                        # Handle methods requiring multiple packets (map/reduce)
+                        # Collect payloads
                         if method in ["map", "reduce"]:
                             if headers is None:
                                 headers = packet.get("params", {}).get("header_list", {})
 
-                            payload = packet.get("params", {}).get("payload")
-                            seq_num = packet.get("params", {}).get("seq_num")
-                            finished = packet.get("params", {}).get("finished", False)
-                            # print(f"Received payload (hex): {payload}")
-                            if payload is not None:
-                                try:
-                                    payload_json = bytes.fromhex(packet["params"]["payload"]).decode('utf-8')
-                            # payload = json.loads(payload_json)
-                                    decoded_payload = json.loads(payload_json)
-                                    collected_payloads.append((seq_num, decoded_payload))
-                                    if isinstance(decoded_payload, list):  # Check if the outer structure is a list
-                                        is_list_of_lists = all(isinstance(item, list) for item in decoded_payload)  # Check if all items are lists
+                            payload_hex = packet["params"].get("payload")
+                            seq_num = packet["params"].get("seq_num")
+                            finished = packet["params"].get("finished", False)
 
-                                        if is_list_of_lists:
-                                            print("The payload after decoding is a list of lists.")
-                                        else:
-                                            print("The payload is a list, but not all elements are lists.")
-                                    else:
-                                        print("The payload is not a list.")
-                                    # decoded_payload = bytes.fromhex(payload).decode('utf-8')
-                                    # collected_payloads.append((seq_num, decoded_payload))
-                                except ValueError as e:
-                                    print(f"Payload decoding error: {e}")
+                            if payload_hex:
+                                try:
+                                    # Decode hex payload into JSON
+                                    payload_bytes = bytes.fromhex(payload_hex)
+                                    payload_json = payload_bytes.decode('utf-8')
+                                    print("CHECK FOR ERROR")
+                                    payload = json.loads(payload_json)
+                                    collected_payloads.append((seq_num, payload))
+                                    print("collected payloads: ", collected_payloads)
+                                except (ValueError, json.JSONDecodeError) as e:
+                                    print(f"Error decoding payload: {e}")
+
+                            if finished:
+                                is_finished = True
+                                break
+
+                        # # Handle methods requiring multiple packets (map/reduce)
+                        # if method in ["map", "reduce"]:
+                        #     print("HANDLING")
+                        #     if "payload" in packet["params"]:
+                        #         print(type(packet["params"]["payload"]))
+                        #     if headers is None:
+                        #         headers = packet.get("params", {}).get("header_list", {})
+
+                        #     payload = packet.get("params", {}).get("payload")
+                        #     print(payload)
+                        #     seq_num = packet.get("params", {}).get("seq_num")
+                        #     finished = packet.get("params", {}).get("finished", False)
+                        #     # print(f"Received payload (hex): {payload}")
+                        #     if payload is not None:
+                        #         try:
+                        #             hex_payload = packet["params"]["payload"]
+                        #             # Convert hex to bytes
+                        #             payload_bytes = bytes.fromhex(hex_payload)
+                                    
+                                    
+                        #             # Decode bytes to string
+                        #             payload_json = payload_bytes.decode('utf-8')
+                                    
+                        #             cleaned_json = payload_json.replace('\\n', '\n')  # Restore newlines if needed
+                        #             # return json.loads(cleaned_json)
+                        #             print(f"Decoded string: ", cleaned_json)
+                        #             # Parse JSON
+                        #             decoded_payload = json.loads(cleaned_json)
+                        #             seq_num = packet.get("seq_num")  # Adjust based on your data structure
+                        #             collected_payloads.append((seq_num, decoded_payload))
+                        #         except ValueError as ve:
+                        #             print(f"ValueError while processing payload: {hex_payload[:50]}... - {ve}")
+                        #         except json.JSONDecodeError as je:
+                        #             print(f"JSONDecodeError while parsing JSON payload: {payload_json[:50]}... - {je}")
+
+
+                            #     try:
+                            #         payload_json = bytes.fromhex(packet["params"]["payload"]).decode('utf-8')
+                            # # payload = json.loads(payload_json)
+                            #         decoded_payload = json.loads(payload_json)
+                            #         collected_payloads.append((seq_num, decoded_payload))
+                            #         if isinstance(decoded_payload, list):  # Check if the outer structure is a list
+                            #             is_list_of_lists = all(isinstance(item, list) for item in decoded_payload)  # Check if all items are lists
+
+                            #             if is_list_of_lists:
+                            #                 print("The payload after decoding is a list of lists.")
+                            #             else:
+                            #                 print("The payload is a list, but not all elements are lists.")
+                            #         else:
+                            #             print("The payload is not a list.")
+                            #         # decoded_payload = bytes.fromhex(payload).decode('utf-8')
+                            #         # collected_payloads.append((seq_num, decoded_payload))
+                            #     except ValueError as e:
+                            #         print(f"Payload decoding error: {e}")
 
                             if finished:
                                 is_finished = True
@@ -1026,49 +1300,76 @@ class WorkerServer:
                 response = JSONRPCResponseManager.handle(json.dumps(rpc_request), dispatcher)
                 conn.sendall(response.json.encode('utf-8'))
 
-            # Finalize combined payload for map/reduce
+            print("has headers: ", headers)
             if method in ["map", "reduce"] and headers and is_finished:
-                print("processing map")
-                if len(collected_payloads) == 1:
-                    final_payload = json.dumps(collected_payloads[0])
-                else:
-                    # Ensure collected_payloads is sorted by sequence number
-                    collected_payloads.sort(key=lambda x: x[0])  # Sort by sequence number
+                    print("COLLECTED PAYLOADS2: ", collected_payloads)
+                    # Sort collected payloads by sequence number
+                    collected_payloads.sort(key=lambda x: x[0])
 
-                    # Combine all decoded payloads into a single list while maintaining structure
-                    final_payload = []
+                    # Combine all decoded payloads into a single list
+                    aggregated_payload = []
                     for _, payload in collected_payloads:
-                        final_payload.extend(payload)  # Extend the aggregated list with each payload
+                        aggregated_payload.extend(payload)
 
-                    # Print to verify the structure
-                    print("Aggregated payload (list of lists):", final_payload)
+                    # Create the RPC request for the map method
+                    rpc_request = {
+                        "jsonrpc": "2.0",
+                        "method": method,
+                        "params": {
+                            "header_list": headers,
+                            "payload": aggregated_payload  # Pass combined payload
+                        },
+                        "id": 1
+                    }
 
-                # Create the RPC request while preserving the list of lists structure
-                rpc_request = {
-                    "jsonrpc": "2.0",
-                    "method": method,
-                    "params": {
-                        "header_list": headers,
-                        "payload": final_payload  # Pass the aggregated list directly
-                    },
-                    "id": 1
-                }
+                    # Process the RPC request
+                    response = JSONRPCResponseManager.handle(json.dumps(rpc_request), dispatcher)
+                    conn.sendall(response.json.encode('utf-8'))
 
-                #     collected_payloads.sort(key=lambda x: x[0] if x[0] is not None else -1)
-                #     aggregated_payload = [json.loads(payload.replace('\n', '').replace('\r', '')) for _, payload in collected_payloads]
-                #     final_payload = json.dumps(aggregated_payload).encode('utf-8').hex()
 
-                # rpc_request = {
-                #     "jsonrpc": "2.0",
-                #     "method": method,
-                #     "params": {
-                #         "header_list": headers,
-                #         "payload": final_payload
-                #     },
-                #     "id": 1
-                # }
-                response = JSONRPCResponseManager.handle(json.dumps(rpc_request), dispatcher)
-                conn.sendall(response.json.encode('utf-8'))
+            # # Finalize combined payload for map/reduce
+            # if method in ["map", "reduce"] and headers and is_finished:
+            #     print("processing map")
+            #     if len(collected_payloads) == 1:
+            #         final_payload = json.dumps(collected_payloads[0], ensure_ascii=False)
+            #     else:
+            #         # Ensure collected_payloads is sorted by sequence number
+            #         collected_payloads.sort(key=lambda x: x[0])  # Sort by sequence number
+
+            #         # Combine all decoded payloads into a single list while maintaining structure
+            #         final_payload = []
+            #         for _, payload in collected_payloads:
+            #             final_payload.extend(payload)  # Extend the aggregated list with each payload
+
+            #         # Print to verify the structure
+            #         print("Aggregated payload (list of lists):", final_payload)
+
+            #     # Create the RPC request while preserving the list of lists structure
+            #     rpc_request = {
+            #         "jsonrpc": "2.0",
+            #         "method": method,
+            #         "params": {
+            #             "header_list": headers,
+            #             "payload": final_payload  # Pass the aggregated list directly
+            #         },
+            #         "id": 1
+            #     }
+
+            #     #     collected_payloads.sort(key=lambda x: x[0] if x[0] is not None else -1)
+            #     #     aggregated_payload = [json.loads(payload.replace('\n', '').replace('\r', '')) for _, payload in collected_payloads]
+            #     #     final_payload = json.dumps(aggregated_payload).encode('utf-8').hex()
+
+            #     # rpc_request = {
+            #     #     "jsonrpc": "2.0",
+            #     #     "method": method,
+            #     #     "params": {
+            #     #         "header_list": headers,
+            #     #         "payload": final_payload
+            #     #     },
+            #     #     "id": 1
+            #     # }
+            #     response = JSONRPCResponseManager.handle(json.dumps(rpc_request), dispatcher)
+            #     conn.sendall(response.json.encode('utf-8'))
 
         except Exception as e:
             print(f"Exception in handle_client: {e}")

@@ -52,7 +52,6 @@ class WorkerClient:
                         "id": id
                     }
 
-        print("sending header request: ", request)
         packet = json.dumps(request)
         s.sendall(packet.encode('utf-8'))
         time.sleep(1)  
@@ -76,8 +75,8 @@ class WorkerClient:
             # Step 4: Verify format
             format_is_correct = verify_format(reconstructed_data)
 
-            print("\nDEBUG: Reconstructed data:", reconstructed_data)
-            print("\nDEBUG: Format is correct:", format_is_correct)
+            # print("\nDEBUG: Reconstructed data:", reconstructed_data)
+            # print("\nDEBUG: Format is correct:", format_is_correct)
 
 
             for packet in packets:
@@ -93,8 +92,18 @@ class WorkerClient:
             # print(f"Sending packet: {json.dumps(payload_request)}")
         elif request["params"]["header_list"]["payload_type"] == 2:
             packets = message.process_payload(msg)
-            print("payload packets: ", packets)
+            
+            # print("payload packets: ", packets)
             for i, packet in enumerate(packets):
+                if isinstance(packet["payload"], str):
+                    try:
+                        print(packet["payload"])
+                        payload_json = json.loads(packet["payload"])
+                        print("PAYLOAD JSON: ", payload_json)
+                    except json.JSONDecodeError:
+                        print("INVALID JSON")
+                        pass  # It's not JSON-encoded, so leave as-is
+
                 is_last_packet = (i == len(packets) - 1)
                 # packet["finished"] = is_last_packet
                 payload_request = {
@@ -106,7 +115,7 @@ class WorkerClient:
                 # print(payload_request)
                 try: 
                     serialized_packet = json.dumps(payload_request)
-                    print("Sending payload packet:", serialized_packet)
+                    # print("Sending payload packet:", serialized_packet)
                     s.sendall(serialized_packet.encode('utf-8'))
                 except Exception as e:
                     print(f"Error serializing payload packet: {e}")
@@ -243,7 +252,7 @@ class WorkerClient:
         # Step 1: Retrieve map result locations from DataManager (via MasterNode)
         map_result_locations = []
         for map_result_file in map_result_files:
-            player_result_path = f"map_result_player_{os.path.basename(map_result_file)}.json"
+            player_result_path = f"map_output_{os.path.basename(map_result_file)}.json"
             team_result_path = f"map_result_team_{os.path.basename(map_result_file)}.json"
             map_locations = self.retrieve_map_results(player_result_path)  # Retrieve from DataManager
             map_result_locations.extend(map_locations)

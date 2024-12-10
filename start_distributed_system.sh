@@ -1,26 +1,51 @@
 #!/bin/bash
 
-MASTER_CONFIG="C:\Users\Danni\Config4\config.json"
-WORKER_CONFIG_DIR=["C:\Users\Danni\Config1\config.json","C:\Users\Danni\Config2\config.json","C:\Users\Danni\Config3\config.json\"]
-PYTHON_SCRIPT="C:\Users\Danni\distributed_systems_ml\MasterNode.py"
+# Define directories where config files are stored
+CONFIG_DIRS=(
+    "/c/Users/Danni/Config1"
+    "/c/Users/Danni/Config2"
+    "/c/Users/Danni/Config3"
+    "/c/Users/Danni/Config4"
+)
 
-start_master() {
-    echo "Starting Master Node..."
-    python3 $PYTHON_SCRIPT --config $MASTER_CONFIG --role master &
-    MASTER_PID=$!
-    echo "Master Node started with PID $MASTER_PID"
-}
+# Define job files to execute
+JOB_FILES=(
+    "C:\Users\Danni\distributed_systems_ml\job3.json"
+)
 
-start_workers() {
-    echo "Starting Worker Nodes..."
-    for WORKER_CONFIG in "$WORKER_CONFIG_DIR"/*.json; do
-        echo "Starting Worker with config $WORKER_CONFIG"
-        python3 $PYTHON_SCRIPT --config $WORKER_CONFIG --role worker &
-        echo "Worker Node started with PID $!"
-    done
-}
 
-echo "Initializing Distributed System"
-start_master
-start_workers
-echo "Distributed System Started"
+# Initialize a variable to hold all config file paths
+CONFIG_FILES=""
+
+echo "Gathering configuration files from specified directories..."
+
+# Loop through directories to find config files
+for DIR in "${CONFIG_DIRS[@]}"; do
+    if [ -d "$DIR" ]; then
+        echo "Processing directory: $DIR"
+        FILES=$(find "$DIR" -type f -name "*.json")
+        CONFIG_FILES="$CONFIG_FILES $FILES"
+    else
+        echo "Directory not found: $DIR"
+    fi
+done
+
+# Trim leading and trailing spaces from CONFIG_FILES
+CONFIG_FILES=$(echo "$CONFIG_FILES" | xargs)
+
+# Check if config files were found
+if [ -z "$CONFIG_FILES" ]; then
+    echo "No configuration files found. Exiting."
+    exit 1
+fi
+
+echo "Found Config Files: $CONFIG_FILES"
+
+# Run UserClient with the config files and job files
+echo "Running UserClient with job files: $JOB_FILES"
+python UserClient.py --config_files $CONFIG_FILES <<EOF
+file
+$JOB_FILES
+exit
+EOF
+
