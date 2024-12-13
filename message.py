@@ -1,5 +1,6 @@
 import os
 import json
+import base64
 import csv
 
 class message:
@@ -34,7 +35,7 @@ class message:
         """
         Preprocess headers for Map tasks.
         """
-        print("map headers: ", self.header_list)
+        # print("map headers: ", self.header_list)
         if "key" not in self.header_list or not self.header_list["key"]:
             raise ValueError("Missing chunked file parameter for map task")
 
@@ -145,11 +146,11 @@ class message:
         file_path = self.header_list["key"]
         packets = []
         seq_num = 0
-        batch_size = 20
+        batch_size = 5000
         if self.check_file_type(file_path) == "json":
             with open(file_path, 'r') as file:
                 json_data = json.load(file)  # Load entire JSON file
-                print(json_data)
+                # print(json_data)
                 if isinstance(json_data, dict):
                     # If the JSON is a dictionary, decide how to handle it
                     raise ValueError("Is not a list.")  # Adjust "data" as needed based on your structure
@@ -172,7 +173,9 @@ class message:
             # Mark the last packet as finished
             if packets:
                 packets[-1]["finished"] = True
-
+                print("is finished")
+                print("# of packets: ", len(packets))
+            # print(packets)
             return packets
 #  2520 * 1024 
 
@@ -195,13 +198,15 @@ class message:
                 # Verify payload is valid JSON
                 try:
                     payload_json = json.loads(payload)  # Parse it back to ensure validity
-                    print("PAYLOAD JSON VALIDATED: ", payload_json)
+                    # print("PAYLOAD JSON VALIDATED: ", payload_json)
                 except json.JSONDecodeError as e:
                     print("INVALID JSON IN MESSAGE: ", e)
                     continue
                 # Create the packet
                 payload_bytes = payload.encode('utf-8')  # Encode JSON string to bytes
-                payload_hex = payload_bytes.hex()  # Convert bytes to hex string
+                payload_hex = payload_bytes  # Convert bytes to hex string
+                payload_hex = base64.b64encode(payload_bytes).decode('utf-8')  # Encode bytes to Base64 string
+
                 packet = {
                     "seq_num": seq_num,
                     "finished": False,
@@ -212,6 +217,8 @@ class message:
 
             # Mark the last packet as finished
             if packets:
+                print("# of packets: ", len(packets))
+                print("is finished")
                 packets[-1]["finished"] = True
 
             return packets

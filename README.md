@@ -131,4 +131,117 @@ reduce:
 -Generate player key-value aggregations, where each player has their total stats (for example, calculate total averages)
 -Generate team-position aggregations, where each team-position key is paired with a list of the players in that team
 
+Data:
+Dataset 1 (season)
+-Player name
+-Team
+-Position (G, F, C)
+-Avg minutes 
+-Avg points per min
+-Avg rebounds per min
+-Avg assists per min
+-Avg steals per min
+-Avg blocks per min
+-Avg double-double per min
+-Avg triple-double per min
+-Avg 3PM per min
+-Avg fantasy points per min
+
+Dataset 2 (per game)
+-Player name
+-Team
+-Position
+-Opponent
+-Injured (ignore)
+-Home_away
+-Total minutes
+-Total points per min
+-Total rebounds per min
+-Total assists per min
+-Total steals per min
+-Total blocks per min
+-Total double-double per min
+-Total triple-double per min
+-Total 3PM per min
+-Total fantasy points per min
+-Total games 
+
+PLAYER_NAME
+TEAM_ABBREVIATION
+MATCHUP 
+MIN
+REB
+AST
+TOV
+STL
+BLK
+PTS
+NBA_FANTASY_PTS
+
+
+# in the script, create multiple copies of all program files and move them in the config folders
+# files should be saved in that folder
+
+# check linear regression calculations 
+
+# improve output
+
+# script:
+Python folder
+Node program folder -- node1, node2, ...
+Copy current node folder into image
+1. node directories and job files
+2. get the config files from the directories
+3. pass to UserClient which initializes MasterNode; remove MasterNode initialization, move to script
+4. MasterNode initializes each WorkerServer/WorkerClient, move to script
+
+Deployment
+1. Package the system for the image
+2. Run the image
+3. 1 image can be for master, 1 image for a worker node; can run the master and worker images, can run multiple worker images
+4. 1 image for master node runs in 1 container, 1 image for worker node (run multiple in different containers with different exposed port) 
+1 node --> 1 exposed port # --> 1 server, 3 clients (still keep internal port #s) 
+
+(WorkerNode needs exposed port # of the MasterNode)
+
+UserClient handles job, script is started at the same time
+file1 (local) --> file1_part1 (local), part2 (local), part3
+worker1 --> part1, worker2, worker3 
+send_file() from local server to each worker (jobmanager can process)
+and then store in their local
+
+
+ClientScript send the files to each node
+
+JobManager --> randomly selects worker, sends task
+UserClient --> splits jobs into tasks (retrieve_file, map, reduce)
+
+
+
+Script starts MasterNode in container, given exposed port # --> script
+UserClient passes job to MasterNode
+Script starts WorkerNodes, passes them MasterNode's port --> script
+WorkerNodes report to MasterNode, Masternode stores them in registry --> Python
+
+
+
+Workers to get masternode port --> script,
+
+
+5. 
+
+Master --> starts Workers, master passes port
+
+
+1. Script starts WorkerServer/WorkerClient, and MasterNode
+2. DataScript:
+    -Split files into data chunks
+    -Send chunk to workernode
+    -Notify masternode
     
+UserClient - splits files into chunks --> rename as Client
+JobMaster - sends chunk to WorkerNode
+DataManager - notifies MasterNode
+
+2. JobScript --> SendFile on each chunk, 
+

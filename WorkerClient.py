@@ -26,6 +26,7 @@ class WorkerClient:
         self.start_listening()
 
     def send_message(self, s, request_params):
+        print("IN SEND MESSAGE")
         time.sleep(1) 
         jsonrpc = "2.0"
         id = random.randint(1, 40000)
@@ -92,16 +93,17 @@ class WorkerClient:
             # print(f"Sending packet: {json.dumps(payload_request)}")
         elif request["params"]["header_list"]["payload_type"] == 2:
             packets = message.process_payload(msg)
+            # print(packets)
             
             # print("payload packets: ", packets)
             for i, packet in enumerate(packets):
                 if isinstance(packet["payload"], str):
                     try:
-                        print(packet["payload"])
+                        # print(packet["payload"])
                         payload_json = json.loads(packet["payload"])
-                        print("PAYLOAD JSON: ", payload_json)
+                        # print("PAYLOAD JSON: ", payload_json)
                     except json.JSONDecodeError:
-                        print("INVALID JSON")
+                        print("INVALID JSON IN WORKERCLIENT")
                         pass  # It's not JSON-encoded, so leave as-is
 
                 is_last_packet = (i == len(packets) - 1)
@@ -117,6 +119,9 @@ class WorkerClient:
                     serialized_packet = json.dumps(payload_request)
                     # print("Sending payload packet:", serialized_packet)
                     s.sendall(serialized_packet.encode('utf-8'))
+                    with open("log_sending", "a") as file:
+                        file.write(serialized_packet + "\n") 
+                    print("sending packet")
                 except Exception as e:
                     print(f"Error serializing payload packet: {e}")
                     return
@@ -264,7 +269,7 @@ class WorkerClient:
 
         # Step 2: Collect map results from the retrieved locations
         collected_map_results = self.collect_map_results(map_result_locations)
-        print("collected map results: ", collected_map_results)
+        # print("collected map results: ", collected_map_results)
 
         print(f"Collected Map results: {len(collected_map_results)} files")
 
@@ -405,7 +410,7 @@ class WorkerClient:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((reduce_server_location[0], reduce_server_location[1]))
             for i, map_result in enumerate(collected_map_results):
-                print("sending packet: ", i)
+                # print("sending packet: ", i)
                 # try:
                 # Determine if this is the last packet
                 is_last_packet = (i == len(collected_map_results) - 1)
