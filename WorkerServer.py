@@ -520,9 +520,6 @@ class FileService:
 
 
     def combine_models(self, payload):
-        """
-        Reduce Phase: Combine models from the map phase.
-        """
         print("in combine_models")
         combined_model = {"coefficients": [], "intercept": 0}
         total_data_points = 0
