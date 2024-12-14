@@ -160,7 +160,8 @@ class message:
             # Batch the data
             for i in range(0, len(json_data), batch_size):
                 batch = json_data[i:i + batch_size]  # Create a batch of items
-                payload = json.dumps(batch).encode('utf-8').hex()  # Serialize and encode
+                payload = json.dumps(batch).encode('utf-8')
+                payload=base64.b64encode(payload).decode('utf-8')  # Serialize and encode
 
                 packet = {
                     "seq_num": seq_num,
@@ -265,7 +266,7 @@ class message:
                     packet = {
                         "seq_num": seq_num,
                         "finished": False,
-                        "payload": file_data.hex()  # Convert to hex for transport
+                        "payload": base64.b64encode(file_data).decode('utf-8')  # Convert to hex for transport
                     }
                     packets.append(packet)
                     seq_num += 1

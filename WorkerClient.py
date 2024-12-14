@@ -68,13 +68,13 @@ class WorkerClient:
             packets = message.process_payload(msg)
 
 
-            write_packets_to_file(packets, "packets.json")
+            # write_packets_to_file(packets, "packets.json")
 
-            # Step 3: Read packets from the JSON file and verify structure
-            reconstructed_data = read_packets_from_file("packets.json")
+            # # Step 3: Read packets from the JSON file and verify structure
+            # reconstructed_data = read_packets_from_file("packets.json")
 
-            # Step 4: Verify format
-            format_is_correct = verify_format(reconstructed_data)
+            # # Step 4: Verify format
+            # format_is_correct = verify_format(reconstructed_data)
 
             # print("\nDEBUG: Reconstructed data:", reconstructed_data)
             # print("\nDEBUG: Format is correct:", format_is_correct)
@@ -119,8 +119,8 @@ class WorkerClient:
                     serialized_packet = json.dumps(payload_request)
                     # print("Sending payload packet:", serialized_packet)
                     s.sendall(serialized_packet.encode('utf-8'))
-                    with open("log_sending", "a") as file:
-                        file.write(serialized_packet + "\n") 
+                    # with open("log_sending", "a") as file:
+                    #     file.write(serialized_packet + "\n") 
                     print("sending packet")
                 except Exception as e:
                     print(f"Error serializing payload packet: {e}")
@@ -314,7 +314,9 @@ class WorkerClient:
                 self.send_message(s, task_data)  # Ensure consistent JSON-RPC call
                 response = s.recv(102400).decode('utf-8')
                 print("Response: ", response)
+                print("error occurs here")
                 response_data = json.loads(response)
+                print("error occurs here")
                 if "result" in response_data and response_data["result"]:
                     collected_results.append(response_data["result"])
                     write_to_file(response_data["result"]["payload"], "jdalkfj.json")

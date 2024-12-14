@@ -10,6 +10,7 @@ import os
 import csv
 import math
 import re
+import base64
 
 # do servers store files in their own directories?
 # should reduce phase return the actual results, or just the model parameters? 
@@ -608,7 +609,7 @@ class FileService:
                 print("IS STRING")
                 try:
                     # If results is a single string, decode it as JSON
-                    payload = bytes.base64.b64decode(payload).decode('utf-8')
+                    payload = base64.b64decode(payload).decode('utf-8')
                     payload = json.loads(payload)
                     # print(f"Decoded results: {payload}")
                 except json.JSONDecodeError as e:
@@ -956,11 +957,13 @@ class FileService:
 
         if status == 200 and payload_type == 2:
             payload = packet.process_payload()
+            print(payload)
             for i in range(len(payload)):
                 # print(payload[i])
                 # print("retrieve data: ", payload[i]["payload"])
-                write_to_file(payload[i]["payload"], "sjlkjflsa.json")
+                # write_to_file(payload[i]["payload"], "sjlkjflsa.json")
                 response.update(payload[i])
+        print("retrieve data response: ", response)
         return response
 
 
@@ -1141,8 +1144,8 @@ class WorkerServer:
                 for packet in packets:
                     try:
                         # Parse the packet
-                        with open("log_packets", "a") as file:
-                            file.write(packet[0:500])
+                        # with open("log_packets", "a") as file:
+                        #     file.write(packet[0:500])
                         print("load now")
                         packet = json.loads(packet)
                         print("succeed")
@@ -1154,7 +1157,7 @@ class WorkerServer:
                             method = packet.get("method")
                             print("Extracted method:", method)
                         if method is not None and method == "reduce" and "header_list" not in packet["params"]:
-                            payload_json = bytes.fromhex(packet["params"]["payload"]).decode('utf-8')
+                            payload_json = base64.b64decode(packet["params"]["payload"]).decode('utf-8')
                             payload = json.loads(payload_json)
                             if isinstance(payload, list):  # Check if the outer structure is a list
                                 is_list_of_lists = all(isinstance(item, list) for item in payload)  # Check if all items are lists
@@ -1215,7 +1218,8 @@ class WorkerServer:
                             if payload_hex:
                                 try:
                                     # Decode hex payload into JSON
-                                    payload_bytes = bytes.fromhex(payload_hex)
+                                    payload_bytes = base64.b64decode(payload_hex)
+                                    # payload_bytes = base64.b64decode(payload_hex)
                                     payload_json = payload_bytes.decode('utf-8')
                                     print("CHECK FOR ERROR")
                                     payload = json.loads(payload_json)
@@ -1287,6 +1291,8 @@ class WorkerServer:
 
                         elif method in ["retrieve_data", "send_data_location", "send_task_to_client"]:
                             response = JSONRPCResponseManager.handle(json.dumps(packet), dispatcher)
+                            print(response)
+                            print(response.json.encode('utf-8'))
                             conn.sendall(response.json.encode('utf-8'))
                             return  # Exit after handling single-packet method
 

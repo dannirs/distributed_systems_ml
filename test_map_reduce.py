@@ -329,11 +329,11 @@ team_encoding = {"ATL": 1, "BOS": 2, "CHA": 3, "CHI": 4, "CLE": 5, "DAL": 6, "DE
                  "MIN": 17, "NOP": 18, "NYK": 19, "BKN": 20, "OKC": 21, "ORL": 22, "PHI": 23, "PHO": 24,
                  "POR": 25, "SAC": 26, "SAS": 27, "TOR": 28, "UTA": 29, "WAS": 30}
 
-csv_files = ["nba_game_logs_2022_23.csv", "nba_game_logs_2023_24.csv", "nba_game_logs_2024_25.csv"]
+csv_files = ["nba_game_logs_2023_24_part1.csv", "nba_game_logs_2023_24_part2.csv", "nba_game_logs_2023_24_part3.csv", "nba_game_logs_2024_25.csv"]
 
 # Use first two CSV files for training
-training_csv_files = csv_files[:2]
-testing_csv_file = csv_files[2]
+training_csv_files = csv_files[:3]
+testing_csv_file = csv_files[3]
 
 # Training Phase
 map_results = [process_chunk(file, is_training=True) for file in training_csv_files]
