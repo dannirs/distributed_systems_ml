@@ -46,10 +46,11 @@ class DataManager:
 
         else:
             # Handle unchunked file storage
-            if len(self.data_registry[original_file_name]) == 0:
-                self.data_registry[original_file_name].append((original_file_name, client_address, file_type))
-            else:
-                return f"Conflict: {original_file_name} already has chunked entries."
+            # if len(self.data_registry[original_file_name]) == 0:
+            self.data_registry[original_file_name].append((original_file_name, client_address, file_type))
+            # else:
+
+                # return f"Conflict: {original_file_name} already has chunked entries."
 
         print("Stored data: ", self.data_registry)
         return "Success"

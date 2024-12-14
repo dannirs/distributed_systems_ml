@@ -1012,6 +1012,30 @@ class WorkerServer:
         self.port = port
         self.worker = worker
 
+    def notify_master(self, clients):
+        print(self.master_ip)
+        print(self.master_port)
+
+        MAX_RETRIES = 5
+        RETRY_DELAY = 2  # seconds
+
+        for attempt in range(MAX_RETRIES):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.connect((self.master_ip, self.master_port))
+                    registration_data = {
+                        "ip": self.ip,
+                        "port": self.port, 
+                        "clients": clients
+                    }
+                    s.sendall(json.dumps(registration_data).encode('utf-8'))
+                    print(f"Successfully notified MasterNode at {self.master_ip}:{self.master_port}")
+            except Exception as e:
+                print(f"Failed to notify MasterNode: {e}")
+        else:
+            print("Failed to connect to MasterNode after multiple attempts.")
+
+
     # def handle_client(self, conn):
     #     try:
     #         method = ""
@@ -1704,10 +1728,11 @@ class WorkerServer:
     #         conn.close()
     #         print("Connection closed")
 
-    def start_server(self):
+    def start_server(self, clients):
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind((self.ip, self.port))
         server_socket.listen(5)
+        self.notify_master(clients)
         print(f"TCP JSON-RPC server listening on {self.ip}:{self.port}")
         while True:  
             print("Waiting for connection...")

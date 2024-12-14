@@ -4,7 +4,9 @@ import random
 import os
 import argparse
 import csv
-import chardet
+import socket
+import threading
+import json
 
 # 1. Set up the script to run configs in different directories
 # 2. Finish debugging Reduce phase 
@@ -45,30 +47,46 @@ import chardet
 # when delivering, put everything in one package
 # can be later (dec. 17, etc.) 
 
-class UserClient:
-    def __init__(self, config_files):
-        self.master = None
-        self.config_files = config_files
-        self.start_master()
-    
-    def start_master(self):
-        for config_file in self.config_files:
-            try:
-                with open(config_file, "r") as file:
-                    configs = json.load(file)
+class Client:
+    def __init__(self, master_ip, master_port, job_files, client_ip="0.0.0.0", client_port=5001):
+        self.master_ip = master_ip
+        self.master_port = master_port
+        self.client_ip = client_ip
+        self.client_port = client_port
+        self.running = True
+        self.files = set()
+        self.server_thread = threading.Thread(target=self.start_server, daemon=True)
+        self.server_thread.start()
+        for job_file in job_files:
+            job_file = job_file.strip()
+            if os.path.exists(job_file):
+                self.handle_job_submission(job_file)
+            else:
+                print(f"Error: File '{job_file}' does not exist.")
+        
 
-                for node in configs:
-                    if node.get("is_master") and len(node) == 3:  
-                        ip = node.get("ip")
-                        port = node.get("port")
-                        print("MasterNode IP: ", ip)
-                        print("MasterNode Port: ", port)
-                        self.config_files.remove(config_file)
-                        self.master = MasterNode(self.config_files, ip, port)
-                        self.master.start()
-                        return  
-            except Exception as e:
-                print(f"Error processing {config_file}: {e}")
+        # self.master = None
+        # self.config_files = config_files
+        # self.start_master()
+    
+    # def start_master(self):
+    #     for config_file in self.config_files:
+    #         try:
+    #             with open(config_file, "r") as file:
+    #                 configs = json.load(file)
+
+    #             for node in configs:
+    #                 if node.get("is_master") and len(node) == 3:  
+    #                     ip = node.get("ip")
+    #                     port = node.get("port")
+    #                     print("MasterNode IP: ", ip)
+    #                     print("MasterNode Port: ", port)
+    #                     self.config_files.remove(config_file)
+    #                     self.master = MasterNode(self.config_files, ip, port)
+    #                     self.master.start()
+    #                     return  
+    #         except Exception as e:
+    #             print(f"Error processing {config_file}: {e}")
 
     def handle_job_submission(self, job_file):
         print(f"Processing job file: {job_file}")
@@ -112,6 +130,7 @@ class UserClient:
                     "payload": payload
                 }
                 tasks.append(task)
+                self.files.add(file_path)
 
             # Handle retrieve_data
             elif method == "retrieve_data":
@@ -175,7 +194,7 @@ class UserClient:
                                         "payload": None
                                     })
                                     map_results.append(chunk_file_name)  # Add chunk name to map results
-
+                                    self.files.add(chunk_file_name)
                                     # Reset chunk data
                                     chunk_rows = []
                                     chunk_size = 0
@@ -202,7 +221,7 @@ class UserClient:
                                     "payload": None
                                 })
                                 map_results.append(chunk_file_name)  # Add chunk name to map results
-
+                                self.files.add(chunk_file_name)
                     else:
                         # Single Map task for small files
                         tasks.append({
@@ -213,7 +232,7 @@ class UserClient:
                             "payload": None
                         })
                         map_results.append(file_path)  # Add original file name to map results
-
+                        self.files.add(file_path)
                 # Create Reduce task with populated map results
                 reduce_task = {
                     "job_id": job_id,
@@ -223,11 +242,31 @@ class UserClient:
                     "payload": None
                 }
                 tasks.append(reduce_task)
-
+                for res in map_results:
+                    self.files.add(res)
             else:
                 print(f"Unsupported method: {method}")
 
         return tasks
+
+    def send_file_chunks(self, data):
+        """Send file chunks to the assigned worker."""
+        worker_ip = data["worker_ip"]
+        worker_port = data["worker_port"]
+        file_chunks = data["file_chunks"]
+
+        for chunk in file_chunks:
+            chunk_path = f"./chunks/{chunk}"  # Update with actual file path
+            try:
+                with open(chunk_path, "rb") as f:
+                    file_data = f.read()
+                
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.connect((worker_ip, worker_port))
+                    s.sendall(file_data)
+                    print(f"Sent chunk {chunk} to Worker at {worker_ip}:{worker_port}")
+            except Exception as e:
+                print(f"Failed to send chunk {chunk} to Worker: {e}")
 
 
     # def create_tasks(self, job_data):
@@ -421,18 +460,86 @@ class UserClient:
             else:
                 print("Invalid input. Please enter 'file', 'cmd', or 'exit'.")
 
+    # def send_job(self, tasks):
+    #     self.master.send_job(job=tasks)
     def send_job(self, tasks):
-        self.master.send_job(job=tasks)
+        """Send a job to the MasterNode."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((self.master_ip, self.master_port))
+                job_data = {"tasks":tasks,
+                            "files":self.files,
+                            "client_ip":self.client_ip,
+                            "client_port":self.client_port}
+                s.sendall(json.dumps(job_data).encode('utf-8'))
+                print(f"Sent job to MasterNode at {self.master_ip}:{self.master_port}")
+        except Exception as e:
+            print(f"Failed to send job to MasterNode: {e}")
 
+    def start_server(self):
+        """Start a socket server to handle incoming requests."""
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.bind((self.client_ip, self.client_port))
+        server_socket.listen(5)
+        print(f"Client server started at {self.client_ip}:{self.client_port}")
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="UserClient Job Submission")
-    parser.add_argument("--config_files", nargs="+", type=str, help="List of config files", required=True)
+        while self.running:
+            try:
+                conn, addr = server_socket.accept()
+                print(f"Connection received from {addr}")
+                threading.Thread(target=self.handle_request, args=(conn, addr), daemon=True).start()
+            except Exception as e:
+                print(f"Error in server loop: {e}")
 
-    args = parser.parse_args()
+    def handle_request(self, conn, addr):
+        """Handle incoming requests from other nodes."""
+        try:
+            data = conn.recv(1024).decode('utf-8')
+            if not data:
+                print(f"No data received from {addr}")
+                return
 
-    node = UserClient(args.config_files)
-    node.run_interactive_mode()
+            request = json.loads(data)
+            action = request.get("action")
+
+            if action == "request_file":
+                self.send_file(conn, request)
+            else:
+                print(f"Unknown action '{action}' received from {addr}")
+        except Exception as e:
+            print(f"Error handling request from {addr}: {e}")
+        finally:
+            conn.close()
+
+    def send_file(self, conn, request):
+        """Send a requested file to the requesting node."""
+        file_name = request.get("file_name")
+        if not file_name or not os.path.exists(file_name):
+            print(f"File '{file_name}' not found")
+            conn.sendall(json.dumps({"status": "error", "message": f"File '{file_name}' not found"}).encode('utf-8'))
+            return
+
+        try:
+            with open(file_name, "rb") as f:
+                file_data = f.read()
+                conn.sendall(file_data)
+            print(f"Sent file '{file_name}' to {conn.getpeername()}")
+        except Exception as e:
+            print(f"Error sending file '{file_name}': {e}")
+
+    def stop_server(self):
+        """Stop the server."""
+        self.running = False
+        print("Stopping client server...")
+
+# if __name__ == '__main__':
+#     parser = argparse.ArgumentParser(description="UserClient Job Submission")
+#     parser.add_argument("--config_files", nargs="+", type=str, help="List of config files", required=True)
+
+#     args = parser.parse_args()
+
+#     node = Client(args.config_files)
+#     node.run_interactive_mode()
 
 
 

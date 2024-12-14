@@ -41,9 +41,9 @@ fi
 
 echo "Found Config Files: $CONFIG_FILES"
 
-# Run UserClient with the config files and job files
-echo "Running UserClient with job files: $JOB_FILES"
-python UserClient.py --config_files $CONFIG_FILES <<EOF
+# Run Client with the config files and job files
+echo "Running Client with job files: $JOB_FILES"
+python Client.py --config_files $CONFIG_FILES <<EOF
 file
 $JOB_FILES
 exit

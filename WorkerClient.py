@@ -215,7 +215,17 @@ class WorkerClient:
     def handle_task(self, task_data):
         print(f"Received task: {task_data}")
         self.task_manager_proxy.process_task(task=task_data)
-
+        if "key" in task_data["params"]["header_list"]:
+            file_name = task_data["params"]["header_list"]["key"]
+            if not os.path.isfile(file_name):
+                task =     {
+                                "method": "retrieve_data",
+                                "header_list": {
+                                    "key": file_name
+                                },
+                                "payload": ""
+                            },
+                self.retrieve_data_location(task, file_name)
         try:
             if task_data["params"]["method"] == "retrieve_data":
                 self.retrieve_data_location(task_data, task_data["params"]["header_list"]["key"])

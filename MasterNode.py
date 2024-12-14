@@ -9,14 +9,17 @@ from JSONRPCProxy import JSONRPCProxy
 from JSONRPCDispatcher import JSONRPCDispatcher
 
 class MasterNode:
-    def __init__(self, config_files, ip="localhost", port=5678):
+    def __init__(self, ip="localhost", port=5678):
         self.ip = ip
-        self.port = port
+        self.port = port if port else self.get_available_port()
+        print(f"MasterNode starting on IP: {self.ip} Port: {self.port}")
+        self.start()
+        # self.port = port
         self.server_registry = {}       
         self.client_registry = {}
         self.client_to_server_registry = {}
         self.job_manager = JobManager(self)  
-        self.config_files = config_files
+        # self.config_files = config_files
         self.heartbeat_timeout = 15
         self.inactive_workers = {}
         self.data_manager = DataManager()
@@ -31,38 +34,56 @@ class MasterNode:
         self.dispatcher.register_method("data.get_data_location", self.data_manager.get_data_location)
         self.dispatcher.register_method("data.store_data_location", self.data_manager.store_data_location)
         self.dispatcher.register_method("master.receive_heartbeat", self.receive_heartbeat)
-
+        self.dispatcher.register_method("master.receive_node_request", self.receive_node_request)
+        self.dispatcher.register_method("master.send_job", self.send_job)
 
         # Wrap managers with JSONRPCProxy
         self.job_manager_proxy = JSONRPCProxy(self.dispatcher, prefix="job")
         self.data_manager_proxy = JSONRPCProxy(self.dispatcher, prefix="data")
 
-    def start_workers(self):
-        print("Starting WorkerNodes")
-        for config_file in self.config_files:
-            try:
-                with open(config_file, "r") as file:
-                    configs = json.load(file)
-                for node in configs:
-                    if node.get("role") == "WorkerServer":
-                        worker = Worker(self.ip, self.port, node.get("ip"), node.get("port"), configs)
-                        threading.Thread(target=worker.start, daemon=True).start()
-                        server_clients = worker.get_clients()
-                        self.server_registry[(node.get("ip"), node.get("port"))] = {"status": True}
-                        self.client_to_server_registry[server_clients[0]] = server_clients[1]
-                        for i, dictionary in enumerate(server_clients[1]):
-                            self.client_registry[server_clients[1][i]] = {
-                                                                        "status": True,
-                                                                        "task_status": False
-                                                                    }
-                        break
-            except Exception as e:
-                print(f"Error processing {config_file}: {e}")
-            print("Finished initializing")
+    def get_available_port(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            print("binding")
+            s.bind(("", 0))  # Bind to any available port
+            return s.getsockname()[1]  # Return the port number
+
+    def receive_node_request(self, ip, port, clients):
+        print(ip)
+        self.server_registry[(ip, port)] = {"status": True}
+        self.client_to_server_registry[clients[0]] = clients[1]
+        for i, dictionary in enumerate(clients[1]):
+            self.client_registry[clients[1][i]] = {
+                                                        "status": True,
+                                                        "task_status": False
+                                                    }
+
+
+    # def start_workers(self):
+    #     print("Starting WorkerNodes")
+    #     for config_file in self.config_files:
+    #         try:
+    #             with open(config_file, "r") as file:
+    #                 configs = json.load(file)
+    #             for node in configs:
+    #                 if node.get("role") == "WorkerServer":
+    #                     worker = Worker(self.ip, self.port, node.get("ip"), node.get("port"), configs)
+    #                     threading.Thread(target=worker.start, daemon=True).start()
+    #                     server_clients = worker.get_clients()
+    #                     self.server_registry[(node.get("ip"), node.get("port"))] = {"status": True}
+    #                     self.client_to_server_registry[server_clients[0]] = server_clients[1]
+    #                     for i, dictionary in enumerate(server_clients[1]):
+    #                         self.client_registry[server_clients[1][i]] = {
+    #                                                                     "status": True,
+    #                                                                     "task_status": False
+    #                                                                 }
+    #                     break
+    #         except Exception as e:
+    #             print(f"Error processing {config_file}: {e}")
+    #         print("Finished initializing")
 
     def start(self):
-        print(f"Master node initializing on {self.ip}:{self.port}")
-        self.start_workers()
+        # print(f"Master node initializing on {self.ip}:{self.port}")
+        # self.start_workers()
         def server_thread():
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server_socket.bind((self.ip, self.port))
@@ -72,8 +93,10 @@ class MasterNode:
             while True:
                 conn, addr = server_socket.accept()
                 threading.Thread(target=self.handle_connection, args=(conn,), daemon=True).start()
-
+        print(self.ip)
+        print(self.port)
         threading.Thread(target=server_thread, daemon=True).start()
+        print("Master node listening")
 
     def handle_connection(self, conn):
         """
@@ -138,4 +161,10 @@ class MasterNode:
         conn.sendall(json.dumps(response).encode('utf-8'))
 
     def send_job(self, job):
-        self.job_manager_proxy.submit_job(job=job)
+        for file in job['files']:
+            self.data_manager_proxy.store_data_location(file, (job['client_ip'], job['client_port']))
+        self.job_manager_proxy.submit_job(job=job['tasks'])
+
+if __name__ == "__main__":
+    master_node = MasterNode()
+    # master_node.start()
