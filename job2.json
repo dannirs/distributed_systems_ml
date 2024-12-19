@@ -2,14 +2,7 @@
     {
         "method": "retrieve_data",
         "header_list": {
-            "key": "username.csv"
-        },
-        "payload": ""
-    },
-    {
-        "method": "retrieve_data",
-        "header_list": {
-            "key": "key1"
+            "key": "nba_game_logs_2023_24_part2.csv"
         },
         "payload": ""
     }

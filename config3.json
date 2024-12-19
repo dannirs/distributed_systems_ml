@@ -1,25 +1,25 @@
 [
     {
         "is_master": false,
-        "ip": "localhost",
+        "ip": "0.0.0.0",
         "port": 5687,
         "role": "WorkerServer"
     },
     {
         "is_master": false,
-        "ip": "localhost",
+        "ip": "0.0.0.0",
         "port": 5688,
         "role": "WorkerClient"
     },
     {
         "is_master": false,
-        "ip": "localhost",
+        "ip": "0.0.0.0",
         "port": 5689,
         "role": "WorkerClient"
     },
     {
         "is_master": false,
-        "ip": "localhost",
+        "ip": "0.0.0.0",
         "port": 5690,
         "role": "WorkerClient"
     }
