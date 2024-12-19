@@ -990,6 +990,9 @@ class FileService:
     def send_task_to_client(self, header_list=None):
         task_data = header_list["task_data"]
         client_address = header_list["client_address"]
+        print("client: ", client_address)
+        print("server: ", self.server.ip)
+        print("server: ", self.server.port)
         print(f"WorkerServer received task: {task_data}")
         jsonrpc = "2.0"
         id = random.randint(1, 40000)

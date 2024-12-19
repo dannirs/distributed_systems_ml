@@ -36,15 +36,31 @@ class JobManager:
     def get_available_clients(self, server_address):
         """
         Get a list of available clients for the given server.
-        """
+            """
         available_clients = []
-        for value in self.master.client_to_server_registry.values():
-            print(value)
-            for client in value:
-                client_info = self.master.client_registry.get((client[0], client[1]), {})
-                if client_info.get("status") and not client_info.get("task_status"):
-                    available_clients.append((client[0], client[1]))
+        print("server address is:", server_address)
+
+        # Safely access clients for the given server
+        clients = self.master.client_to_server_registry.get(server_address, [])
+        print("Clients for server:", clients)
+
+        # Iterate over the client list
+        for client in clients:  # Each client is a list like ['localhost', 5684]
+            client_info = self.master.client_registry.get((client[0], client[1]), {})
+            if client_info.get("status") and not client_info.get("task_status"):
+                available_clients.append((client[0], client[1]))
+
         return available_clients
+
+        # available_clients = []
+        # print("server address is: ", server_address)
+        # for value in self.master.client_to_server_registry[server_address]:
+        #     print(value)
+        #     for client in value:
+        #         client_info = self.master.client_registry.get((client[0], client[1]), {})
+        #         if client_info.get("status") and not client_info.get("task_status"):
+        #             available_clients.append((client[0], client[1]))
+        # return available_clients
 
     def send_task_to_client(self, server_ip, server_port, client_address, task):
         """
@@ -67,11 +83,12 @@ class JobManager:
                 }
                 sock.sendall(json.dumps(message).encode("utf-8"))
                 print(f"Task {task['task_id']} sent to {client_address} via {server_ip}:{server_port}")
+                self.tasks_pending_results[task["task_id"]] = task
+                self.task_queue.pop(0)
+                print(self.tasks_pending_results)
                 response = sock.recv(1024).decode("utf-8")
                 print("Response from client:", response)
                 self.master.client_registry[client_address]["task_status"] = False
-                self.task_queue.pop(0)
-                self.tasks_pending_results[task["task_id"]] = task
         except Exception as e:
             print(f"Failed to send task {task['task_id']} to {client_address}: {e}")
 
@@ -81,10 +98,14 @@ class JobManager:
         Handles MapReduce and non-MapReduce tasks.
         """
         while self.task_queue:
+            print("server registry: ", self.master.server_registry)
+            print("client to server: ", self.master.client_to_server_registry)
             for server_address in self.master.server_registry:
                 server_ip, server_port = server_address
                 print("done4")
                 available_clients = self.get_available_clients(server_address)
+                print(server_address)
+                print(available_clients)
                 print("done5")
                 if not available_clients:
                     continue
@@ -97,8 +118,8 @@ class JobManager:
                         self.send_task_to_client(server_ip, server_port, client_address, task)
             print("done6")
             # If all tasks are assigned, handle the Reduce task (if exists)
-            if not self.task_queue and self.reduce_task:
-                self.assign_reduce_task()
+            # if not self.task_queue and self.reduce_task:
+            #     self.assign_reduce_task()
             print("done7")
 
     def assign_reduce_task(self):
@@ -120,21 +141,25 @@ class JobManager:
         """
         Process the response from a client after task execution.
         """
+        print("in task response")
         response = response or kwargs.get("response")
         print("Task response:", response)
-        client_info = self.master.client_registry.get((response["params"]["client_addr"][0], response["params"]["client_addr"][1]), {})
+        client_info = self.master.client_registry.get((response["client_addr"][0], response["client_addr"][1]), {})
         if client_info:
             client_info["task_status"] = False
-        if response["params"]["status"] == "404":
+        if response["status"] == "404":
             # Reassign failed task
-            self.task_queue.append(self.tasks_pending_results[response["params"]["task_id"]])
+            self.task_queue.append(self.tasks_pending_results[response["task_id"]])
             self.assign_tasks()
         else:
             print("Tasks pending results:", self.tasks_pending_results)
-            self.tasks_pending_results.pop(response["params"]["task_id"], None)
+            self.tasks_pending_results.pop(response["task_id"], None)
 
+        print(self.tasks_pending_results)
+        print(self.task_queue)
+        print(self.reduce_task)
         # Check if all map tasks are completed
-        if not self.task_queue and self.reduce_task:
+        if not self.tasks_pending_results and not self.task_queue and self.reduce_task:
             self.assign_reduce_task()
 
 

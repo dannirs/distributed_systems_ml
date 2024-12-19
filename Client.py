@@ -11,6 +11,7 @@ from JSONRPCProxy import JSONRPCProxy
 from jsonrpc import dispatcher, JSONRPCResponseManager
 from message import message
 import base64
+from handlers import log_data_summary
 
 # 1. Set up the script to run configs in different directories
 # 2. Finish debugging Reduce phase 
@@ -50,6 +51,51 @@ import base64
 # Tutorial for the user to use the program
 # when delivering, put everything in one package
 # can be later (dec. 17, etc.) 
+
+class PacketManager:
+    def __init__(self):
+        self.packet_store = {}  # Store packets indexed by job/request ID
+
+    def store_packets(self, job_id, packets):
+        self.packet_store[job_id] = packets
+
+    def get_next_packet(self, job_id, seq_num):
+        if job_id not in self.packet_store:
+            raise ValueError(f"Job ID {job_id} not found")
+
+        packets = self.packet_store[job_id]
+        if seq_num < len(packets):
+            return packets[seq_num]
+        else:
+            raise ValueError(f"Sequence number {seq_num} out of range for Job ID {job_id}")
+
+# Store packets after processing
+def retrieve_data(self, header_list=None):
+    payload_type = 2
+    key = header_list["key"]
+    destination_port = header_list["destination_port"]
+    source_port = header_list["source_port"]
+
+    if not key or not os.path.exists(key):
+        print(f"File '{key}' not found")
+        return {"status": 404, "message": f"'{key}' not found in cache."}
+
+    # Process payload into packets
+    packets = self.process_payload()
+    job_id = random.randint(1, 40000)  # Generate a unique job ID
+
+    # Store packets for sequential transmission
+    self.packet_manager.store_packets(job_id, packets)
+    return {"status": 200, "job_id": job_id, "message": "Job initialized, ready for packet requests."}
+
+def send_packet(self, job_id, seq_num):
+    try:
+        packet = self.packet_manager.get_next_packet(job_id, seq_num)
+        return {"status": 200, "packet": packet}
+    except ValueError as e:
+        return {"status": 400, "message": str(e)}
+
+
 class FileService:
     def __init__(self, server):
         pass
@@ -300,7 +346,8 @@ class Client:
                 #     self.files.append(res)
             else:
                 print(f"Unsupported method: {method}")
-
+        for file in self.files:
+            self.send_data_location(file, (self.client_ip, self.client_port))
         return tasks
 
     def send_file_chunks(self, data):
@@ -484,6 +531,24 @@ class Client:
 
     #     return tasks
 
+    def send_data_location(self, file, client_addr):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((self.master_ip, self.master_port))
+                job_data =                     {
+                    "jsonrpc": "2.0",
+                    "method": "data.store_data_location_client",
+                    "params": {
+                        "file":file,
+                        "client_address":client_addr
+                    },
+                    "id": random.randint(1, 10000)
+                }
+                s.sendall(json.dumps(job_data).encode('utf-8'))
+                print(f"Sent data location to MasterNode at {self.master_ip}:{self.master_port}")
+        except Exception as e:
+            print(f"Failed to send data location to MasterNode: {e}")
+
     def run_interactive_mode(self):
         print("UserClient is now running. Enter jobs interactively.")
         print("Type 'exit' to close the UserClient.")
@@ -527,10 +592,7 @@ class Client:
                     "jsonrpc": "2.0",
                     "method": "master.send_job",
                     "params": {
-                        "tasks":tasks,
-                        "files":self.files,
-                        "client_ip":"localhost",
-                        "client_port":self.client_port,
+                        "tasks":tasks
                     },
                     "id": random.randint(1, 10000)
                 }
@@ -538,6 +600,53 @@ class Client:
                 print(f"Sent job to MasterNode at {self.master_ip}:{self.master_port}")
         except Exception as e:
             print(f"Failed to send job to MasterNode: {e}")
+
+    def retrieve_data(self, header_list, conn):
+        payload_type = 2
+        key = header_list["key"]
+        destination_port = header_list["destination_port"]
+        source_port = header_list["source_port"]
+        if not key or not os.path.exists(key):
+            print(f"File '{key}' not found")
+            status = 404
+            print(f"'{key}' not found in cache.") 
+        else: 
+            status = 200
+
+        payload = ""
+        if status == 200: 
+            payload = key
+
+        packet = message( 
+            method="retrieve_data_resp", 
+            source_port=destination_port,
+            destination_port=source_port,
+            header_list={"key": key, "status": status, "payload_type": payload_type, "payload": payload}
+        )        
+        
+        response = packet.process_headers()
+
+        if status == 200:
+            payloads = packet.process_payload()
+            for payload in payloads:
+                # print("payload: ", payload)
+                decoded_payload = base64.b64decode(payload["payload"]).decode('utf-8') 
+                # print("decoded payload: ", decoded_payload) # Decode base64
+                json_payload = json.loads(decoded_payload)  # Parse JSON
+                log_data_summary(json_payload, label="Parsed Payload on Server")
+                # print("json payload: ", json_payload)
+                conn.sendall((json.dumps(json_payload) + "\n").encode('utf-8'))  # Convert to JSON string and encode to bytes
+
+                # try:
+                #     decoded_payload = base64.b64decode(payload["payload"]).decode('utf-8')  # Decode base64
+                #     json_payload = json.loads(decoded_payload)  # Parse JSON
+                #     print("Decoded JSON payload:", json_payload)
+                #     # response.update(json_payload)
+                # except (base64.binascii.Error, json.JSONDecodeError) as e:
+                #     print(f"Error decoding or parsing payload: {e}")
+                #     continue
+        # print("retrieve data response: ", response)
+        return         
 
     def start_server(self):
         """Start a socket server to handle incoming requests."""
@@ -581,10 +690,11 @@ class Client:
             print("request from client: ", request)
 
             if action == "retrieve_data":
-                response = JSONRPCResponseManager.handle(json.dumps(request), dispatcher)
-                print(response)
-                print(response.json.encode('utf-8'))
-                conn.sendall(response.json.encode('utf-8'))
+                self.retrieve_data(request["params"]["header_list"], conn)
+                # response = JSONRPCResponseManager.handle(json.dumps(request), dispatcher)
+                # print(response)
+                # print(response.json.encode('utf-8'))
+                # conn.sendall(response.json.encode('utf-8'))
             else:
                 print(f"Unknown action '{action}' received from {addr}")
         except Exception as e:

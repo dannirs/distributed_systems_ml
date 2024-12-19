@@ -159,7 +159,7 @@ class MasterNode:
         """
         print("in handle connection")
         try:
-            request = conn.recv(1024).decode('utf-8')
+            request = conn.recv(10000).decode('utf-8')
             print(f"MasterNode received request: {request}")
 
             # Dispatch the JSON-RPC request
@@ -219,10 +219,11 @@ class MasterNode:
         response = {"jsonrpc": "2.0", "result": result, "id": 3} if isinstance(result, list) else {"jsonrpc": "2.0", "error": result, "id": 3}
         conn.sendall(json.dumps(response).encode('utf-8'))
 
-    def send_job(self, tasks, files, client_ip, client_port):
+    def send_job(self, tasks):
         print("in send job")
-        for file in files:
-            self.data_manager_proxy.store_data_location_client(file=file, client_address=(client_ip, client_port))
+        print(tasks)
+        # for file in files:
+        #     self.data_manager_proxy.store_data_location_client(file=file, client_address=(client_ip, client_port))
         self.job_manager_proxy.submit_job(tasks=tasks)
 
 if __name__ == "__main__":

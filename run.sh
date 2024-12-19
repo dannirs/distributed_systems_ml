@@ -9,7 +9,7 @@ CONFIG_DIRS=(
 
 # Define job files to execute
 JOB_FILES=(
-    "C:\Users\Danni\distributed_systems_ml\job3.json"
+    "C:/Users/Danni/distributed_systems_ml/job3.json"
 )
 
 which python
@@ -17,10 +17,7 @@ which python
 # Step 1: Start the MasterNode and print output directly to the terminal
 echo "Starting MasterNode..."
 MASTER_OUTPUT_FILE="/c/Users/Danni/Config4/master_output.log"  # Temporary file for MasterNode output
-# Start MasterNode and ensure redirection to file works
-echo "Starting MasterNode and redirecting output to $MASTER_OUTPUT_FILE"
 (cd /c/Users/Danni/Config4 && python -u MasterNode.py | tee "$MASTER_OUTPUT_FILE" 2>&1 &)
-
 
 # Wait for the file to be created
 sleep 2
@@ -89,43 +86,25 @@ EOF
     fi
 }
 
-# Step 2: Initialize a variable to hold all config file paths
-CONFIG_FILES=""
-
-echo "Gathering configuration files from specified directories..."
-
-# Loop through directories to find config files
+# Step 2: Start WorkerServers with MasterNode's IP and Port
 for DIR in "${CONFIG_DIRS[@]}"; do
-    if [ -d "$DIR" ]; then
-        echo "Processing directory: $DIR"
-        FILES=$(find "$DIR" -type f -name "*.json")
-        CONFIG_FILES="$CONFIG_FILES $FILES"
-    else
-        echo "Directory not found: $DIR"
+    CONFIG_FILE="$DIR/config.json"  # Explicitly reference config.json in each directory
+
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "No config.json found in directory: $DIR. Skipping."
+        continue
     fi
+
+    echo "Starting WorkerServer with configuration: $CONFIG_FILE in directory: $DIR with MasterNode at $MASTER_IP:$MASTER_PORT"
+
+    # Run WorkerServer and explicitly pass the config file
+    (cd "$DIR" && python -u Worker.py \
+        --master-ip "$MASTER_IP" \
+        --master-port "$MASTER_PORT" \
+        --config "$CONFIG_FILE" 2>&1) &
 done
 
-# Trim leading and trailing spaces from CONFIG_FILES
-CONFIG_FILES=$(echo "$CONFIG_FILES" | xargs)
-
-# Check if config files were found
-if [ -z "$CONFIG_FILES" ]; then
-    echo "No configuration files found. Exiting."
-    exit 1
-fi
-
-echo "Found Config Files: $CONFIG_FILES"
-
-# Step 3: Start WorkerServers with MasterNode's IP and Port
-for CONFIG_FILE in $CONFIG_FILES; do
-    CONFIG_DIR=$(dirname "$CONFIG_FILE")
-    echo "Starting WorkerServer in directory: $CONFIG_DIR with MasterNode at $MASTER_IP:$MASTER_PORT"
-
-    # Run WorkerServer and print all output to the console
-    (cd "$CONFIG_DIR" && python -u Worker.py --master-ip "$MASTER_IP" --master-port "$MASTER_PORT" 2>&1) &
-done
-
-# Step 4: Start UserClient with MasterNode details and job files
+# Step 3: Start UserClient with MasterNode details and job files
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 echo "Starting Client..."
 python -u "$SCRIPT_DIR/Client.py" \

@@ -2,13 +2,14 @@ import socket
 import threading
 from message import message
 import json
-from handlers import write_to_file
+from handlers import write_to_file, write_to_file_csv, log_data_summary
 import random
 import time
 from TaskManager import TaskManager
 from JSONRPCProxy import JSONRPCProxy
 import os
 from main import write_packets_to_file, read_packets_from_file, verify_format 
+import base64
 
 class WorkerClient:
     def __init__(self, master_ip, master_port, server_ip, server_port, ip, port):
@@ -214,7 +215,7 @@ class WorkerClient:
                 "id": random.randint(1, 10000)}
                 location = response_data["result"]   
                 print(f"Data '{key}' is located at worker {location}")
-                self.connect_to_data_server(location[0][1], task)
+                self.connect_to_data_server_chunk_file(location[0][1], task)
             elif "result" in response_data:
                 location = response_data["result"]
                 print(f"Data '{key}' is located at worker {location}")
@@ -252,6 +253,40 @@ class WorkerClient:
         finally:
             self.active = False
             print("Worker has stopped; heartbeats will cease.")
+
+    def connect_to_data_server_chunk_file(self, location, task_data):
+        all_data = []
+        print("Task Data data server: ", task_data)
+        print("location: ", location)
+        buffer = ""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((location[0], location[1]))
+            self.send_message(s, task_data)
+            while True:
+                chunk = s.recv(1000000).decode('utf-8')
+                if not chunk:
+                    break
+                buffer += chunk
+                while "\n" in buffer:
+                    payload, buffer = buffer.split("\n", 1)  # Split buffer at the first newline
+                    if payload.strip():
+                        try:
+                            parsed_payload = json.loads(payload)  # Parse JSON payload
+                            log_data_summary(parsed_payload, label="Parsed Payload on Client")
+                            if isinstance(parsed_payload, list):
+                                all_data.extend(parsed_payload)  # Add rows to the all_data list
+                            else:
+                                print("Skipping invalid payload (not a list):", parsed_payload)  # Add rows to all_data
+                        except json.JSONDecodeError as e:
+                            print(f"Error decoding JSON: {e}")
+                # if packet["finished"]:
+                #     break
+            if all_data:
+                log_data_summary(all_data, label="Parsed Payload on All Data")
+                # print("Data to be written to file:", all_data)
+                write_to_file_csv(task_data["params"]["header_list"]["key"], all_data)
+            s.close() 
+        self.task_manager_proxy.task_complete(task_status=200, task_data=task_data)
 
     def connect_to_data_server(self, location, task_data):
         print("Task Data data server: ", task_data)

@@ -16,10 +16,11 @@ class TaskManager:
         self.dispatcher.register_method("task.send_task_update", self.send_task_update)
 
     def task_complete(self, task_status, task_data):
+        print("in task complete")
         response = json.dumps({
             "jsonrpc": "2.0",
-            "method": "task_update",
-            "params": {"client_addr": task_data["params"]["header_list"]["source_port"], "status": task_status, "task_id": task_data["params"]["task_id"]},
+            "method": "job.get_task_response",
+            "params": {"response":{"client_addr": task_data["params"]["header_list"]["source_port"], "status": task_status, "task_id": task_data["params"]["task_id"]}},
             "id": 1
         })
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

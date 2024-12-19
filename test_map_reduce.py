@@ -329,40 +329,42 @@ team_encoding = {"ATL": 1, "BOS": 2, "CHA": 3, "CHI": 4, "CLE": 5, "DAL": 6, "DE
                  "MIN": 17, "NOP": 18, "NYK": 19, "BKN": 20, "OKC": 21, "ORL": 22, "PHI": 23, "PHO": 24,
                  "POR": 25, "SAC": 26, "SAS": 27, "TOR": 28, "UTA": 29, "WAS": 30}
 
-csv_files = ["nba_game_logs_2023_24_part1.csv", "nba_game_logs_2023_24_part2.csv", "nba_game_logs_2023_24_part3.csv", "nba_game_logs_2024_25.csv"]
+# csv_files = ["nba_game_logs_2023_24_part1.csv", "nba_game_logs_2023_24_part2.csv", "nba_game_logs_2023_24_part3.csv", "nba_game_logs_2024_25.csv"]
 
-# Use first two CSV files for training
-training_csv_files = csv_files[:3]
-testing_csv_file = csv_files[3]
+# # Use first two CSV files for training
+# training_csv_files = csv_files[:3]
+# testing_csv_file = csv_files[3]
 
-# Training Phase
-map_results = [process_chunk(file, is_training=True) for file in training_csv_files]
+# # Training Phase
+# map_results = [process_chunk(file, is_training=True) for file in training_csv_files]
 
-map_outputs = []
-preprocessed_files = []
-models = []
-Xs = []
-ys = []
+# map_outputs = []
+# preprocessed_files = []
+# models = []
+# Xs = []
+# ys = []
 
-for result in map_results:
-    if result:
-        output_path, model, X, y, preprocessed_path, player_names = result
-        map_outputs.append(output_path)
-        models.append(model)
-        Xs.append(X)
-        ys.append(y)
-        preprocessed_files.append(preprocessed_path)
+# for result in map_results:
+#     if result:
+#         output_path, model, X, y, preprocessed_path, player_names = result
+#         map_outputs.append(output_path)
+#         models.append(model)
+#         Xs.append(X)
+#         ys.append(y)
+#         preprocessed_files.append(preprocessed_path)
 
-# Combine Models
-if map_outputs:
-    print("Combining models from map outputs...")
-    combined_model = combine_models(map_outputs)
-    print("Models combined successfully.")
+# # Combine Models
+# if map_outputs:
+#     print("Combining models from map outputs...")
+#     combined_model = combine_models(map_outputs)
+#     print("Models combined successfully.")
 
-# Evaluate Combined Model on Training Data (Optional)
-print("\nEvaluating combined model on the last training dataset:")
-evaluate_model(LinearRegressionModel(combined_model), Xs[-1], ys[-1])
+# # Evaluate Combined Model on Training Data (Optional)
+# print("\nEvaluating combined model on the last training dataset:")
+# evaluate_model(LinearRegressionModel(combined_model), Xs[-1], ys[-1])
 
+testing_csv_file = "nba_game_logs_2024_25.csv"
+combined_model = {'coefficients': [8.77009308487783, 53.89316946860845, 11.154876571012416, 11.743058595408115, 25.36294219397058, 31.36322682923388, 2.437651515532386, 7.427856414431349, -0.03615716474523691, -0.04369536417746883, 1.3884004560016068], 'intercept': -7.796222773524683} 
 # Process test dataset
 test_X, test_y, _, test_player_names = process_chunk(testing_csv_file, is_training=False)
 

@@ -5,8 +5,14 @@ import json
 import os
 import socket
 
-def load_config():
-    config_path = os.path.join(os.path.dirname(__file__), "config.json")
+def load_config(config_path=None):
+    """
+    Load the configuration file.
+    If config_path is not provided, default to 'config.json' in the script directory.
+    """
+    if not config_path:
+        config_path = os.path.join(os.path.dirname(__file__), "config.json")
+    
     with open(config_path, "r") as f:
         return json.load(f)
 
@@ -69,10 +75,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--master-ip", required=True, help="MasterNode IP Address")
     parser.add_argument("--master-port", required=True, type=int, help="MasterNode Port")
+    parser.add_argument('--config', required=True, help="Path to configuration file")
+    
     args = parser.parse_args()
 
     # notify_master_node(args.master_ip, args.master_port)
-    config = load_config()
+    config = load_config(args.config)
+    # config = load_config()
     # args = parse_args()
 
     worker = Worker(
