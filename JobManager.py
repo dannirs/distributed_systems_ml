@@ -9,26 +9,26 @@ class JobManager:
         self.tasks_pending_results = {}
         self.reduce_task = None  # Store the Reduce task for later
 
-    def submit_job(self, job=None, **kwargs):
+    def submit_job(self, tasks=None, **kwargs):
         """
         Process job submission and assign tasks.
         Accepts job data directly or via JSON-RPC keyword arguments.
         Handles MapReduce tasks as well as other types of tasks.
         """
-        job = job or kwargs.get("job")
+        tasks = tasks or kwargs.get("job")
         print("JobManager is processing the job")
-
+        print(tasks)
         # Separate tasks into MapReduce and others
-        map_tasks = [task for task in job if task["method"] == "map"]
-        reduce_tasks = [task for task in job if task["method"] == "reduce"]
-        other_tasks = [task for task in job if task["method"] not in ["map", "reduce"]]
-
+        map_tasks = [task for task in tasks if task["method"] == "map"]
+        reduce_tasks = [task for task in tasks if task["method"] == "reduce"]
+        other_tasks = [task for task in tasks if task["method"] not in ["map", "reduce"]]
+        print("done1")
         # Add tasks to the queue
         self.task_queue.extend(map_tasks + other_tasks)
-
+        print("done2")
         # Store the Reduce task(s) for later execution
         self.reduce_task = reduce_tasks[0] if reduce_tasks else None
-
+        print("done3")
         # Assign tasks to available clients
         self.assign_tasks()
 
@@ -39,10 +39,11 @@ class JobManager:
         """
         available_clients = []
         for value in self.master.client_to_server_registry.values():
+            print(value)
             for client in value:
-                client_info = self.master.client_registry.get(client, {})
+                client_info = self.master.client_registry.get((client[0], client[1]), {})
                 if client_info.get("status") and not client_info.get("task_status"):
-                    available_clients.append(client)
+                    available_clients.append((client[0], client[1]))
         return available_clients
 
     def send_task_to_client(self, server_ip, server_port, client_address, task):
@@ -82,8 +83,9 @@ class JobManager:
         while self.task_queue:
             for server_address in self.master.server_registry:
                 server_ip, server_port = server_address
+                print("done4")
                 available_clients = self.get_available_clients(server_address)
-
+                print("done5")
                 if not available_clients:
                     continue
 
@@ -93,10 +95,11 @@ class JobManager:
 
                         # Send task to client
                         self.send_task_to_client(server_ip, server_port, client_address, task)
-
+            print("done6")
             # If all tasks are assigned, handle the Reduce task (if exists)
             if not self.task_queue and self.reduce_task:
                 self.assign_reduce_task()
+            print("done7")
 
     def assign_reduce_task(self):
         """

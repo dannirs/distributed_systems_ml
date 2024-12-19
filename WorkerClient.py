@@ -27,6 +27,7 @@ class WorkerClient:
 
     def send_message(self, s, request_params):
         print("IN SEND MESSAGE")
+        print(request_params)
         time.sleep(1) 
         jsonrpc = "2.0"
         id = random.randint(1, 40000)
@@ -166,7 +167,7 @@ class WorkerClient:
                 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
                     heartbeat_data = json.dumps({
                         "jsonrpc": "2.0",
-                        "method": "heartbeat",
+                        "method": "master.receive_heartbeat",
                         "params": {
                             "worker_ip": self.ip,
                             "worker_port": self.port
@@ -180,7 +181,7 @@ class WorkerClient:
 
             time.sleep(10)  
 
-    def retrieve_data_location(self, task_data, key=None):
+    def retrieve_data_location(self, task_data, key=None, method=None):
         print(self.master_ip)
         print(self.master_port)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -200,7 +201,21 @@ class WorkerClient:
             s.sendall(json_request)
             response = s.recv(1024).decode('utf-8')
             response_data = json.loads(response)
-            if "result" in response_data:
+            print("task_data: ", task_data)
+            if "result" in response_data and method == "data.get_data_location":
+                task = {"jsonrpc": "2.0",
+                "method": "retrieve_data",
+                "params": {
+                    "header_list": {
+                        "key": key
+                    },
+                    "payload": ""
+                },
+                "id": random.randint(1, 10000)}
+                location = response_data["result"]   
+                print(f"Data '{key}' is located at worker {location}")
+                self.connect_to_data_server(location[0][1], task)
+            elif "result" in response_data:
                 location = response_data["result"]
                 print(f"Data '{key}' is located at worker {location}")
                 self.connect_to_data_server(location[0][1], task_data)
@@ -215,17 +230,17 @@ class WorkerClient:
     def handle_task(self, task_data):
         print(f"Received task: {task_data}")
         self.task_manager_proxy.process_task(task=task_data)
-        if "key" in task_data["params"]["header_list"]:
+        if task_data["params"]["method"] == "map":
             file_name = task_data["params"]["header_list"]["key"]
             if not os.path.isfile(file_name):
                 task =     {
-                                "method": "retrieve_data",
+                                "method": "data.get_data_location",
                                 "header_list": {
                                     "key": file_name
                                 },
                                 "payload": ""
-                            },
-                self.retrieve_data_location(task, file_name)
+                            }
+                self.retrieve_data_location(task, file_name, "data.get_data_location")
         try:
             if task_data["params"]["method"] == "retrieve_data":
                 self.retrieve_data_location(task_data, task_data["params"]["header_list"]["key"])
@@ -244,7 +259,7 @@ class WorkerClient:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((location[0], location[1]))
             self.send_message(s, task_data)
-            response = s.recv(1024).decode('utf-8')
+            response = s.recv(1000000).decode('utf-8')
             # while response:            
             print("Response: ", response)
             response_data = json.loads(response)

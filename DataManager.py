@@ -3,6 +3,34 @@ class DataManager:
         # Registry structure: {original_file: [(file_name, location, type)]}
         self.data_registry = {}
 
+    def store_data_location_client(self, file, client_address):
+        """
+        Store the location of a file or computation result.
+        
+        Args:
+            original_file_name (str): The name of the original file.
+            client_address (tuple): The address of the client (IP, port).
+            chunked_file_name (str, optional): The name of the chunked file or intermediate result.
+            file_type (str, optional): Type of the file (e.g., 'chunk', 'map_output', 'reduce_output').
+        
+        Returns:
+            str: Success message or error.
+        """
+        print("Storing data: ", self.data_registry)
+        if file not in self.data_registry:
+            self.data_registry[file] = []
+
+            # Handle unchunked file storage
+            # if len(self.data_registry[original_file_name]) == 0:
+        file_type = "chunked"
+        self.data_registry[file].append((file, client_address, file_type))
+            # else:
+
+                # return f"Conflict: {original_file_name} already has chunked entries."
+
+        print("Stored data: ", self.data_registry)
+        return "Success"
+
     def store_data_location(self, original_file_name, client_address, chunked_file_name=None, file_type="chunk"):
         """
         Store the location of a file or computation result.

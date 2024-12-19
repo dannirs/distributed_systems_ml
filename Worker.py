@@ -31,14 +31,15 @@ class Worker:
         self.master_port = master_port
         self.clients = {}
         self.server = WorkerServer(self.master_ip, self.master_port, self.ip, self.port, self)
-        self.start()
+        # self.start()
+        print("config: ", config)
         for i, dictionary in enumerate(config):
             if config[i]["role"] == "WorkerClient":
                 ip = config[i]["ip"]
                 port = config[i]["port"]
                 client = WorkerClient(self.master_ip, self.master_port, self.ip, self.port, ip, port)
                 self.clients[(ip, port)] = client
-
+        print("self.clients: ", self.clients)
     
     def get_clients(self):
         return ((self.ip, self.port), list(self.clients.keys()))
@@ -65,8 +66,14 @@ class Worker:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--master-ip", required=True, help="MasterNode IP Address")
+    parser.add_argument("--master-port", required=True, type=int, help="MasterNode Port")
+    args = parser.parse_args()
+
+    # notify_master_node(args.master_ip, args.master_port)
     config = load_config()
-    args = parse_args()
+    # args = parse_args()
 
     worker = Worker(
         master_ip=args.master_ip,

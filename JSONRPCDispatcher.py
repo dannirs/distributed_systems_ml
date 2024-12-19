@@ -39,4 +39,5 @@ class JSONRPCDispatcher:
                 "error": {"code": -32603, "message": str(e)},
                 "id": req_id,
             }
+            print(response)
         return json.dumps(response)

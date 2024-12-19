@@ -9,12 +9,13 @@ from JSONRPCProxy import JSONRPCProxy
 from JSONRPCDispatcher import JSONRPCDispatcher
 
 class MasterNode:
-    def __init__(self, ip="localhost", port=5678):
+    def __init__(self, ip="localhost", port=3676):
         self.ip = ip
-        self.port = port if port else self.get_available_port()
+        # self.ip = self.get_local_ip()
+        # self.port = port if port else self.get_available_port()
+        self.port = port
         print(f"MasterNode starting on IP: {self.ip} Port: {self.port}")
-        self.start()
-        # self.port = port
+        
         self.server_registry = {}       
         self.client_registry = {}
         self.client_to_server_registry = {}
@@ -33,6 +34,7 @@ class MasterNode:
         self.dispatcher.register_method("job.assign_tasks", self.job_manager.assign_tasks)
         self.dispatcher.register_method("data.get_data_location", self.data_manager.get_data_location)
         self.dispatcher.register_method("data.store_data_location", self.data_manager.store_data_location)
+        self.dispatcher.register_method("data.store_data_location_client", self.data_manager.store_data_location_client)
         self.dispatcher.register_method("master.receive_heartbeat", self.receive_heartbeat)
         self.dispatcher.register_method("master.receive_node_request", self.receive_node_request)
         self.dispatcher.register_method("master.send_job", self.send_job)
@@ -49,13 +51,34 @@ class MasterNode:
 
     def receive_node_request(self, ip, port, clients):
         print(ip)
+        print(clients)
+        print("in receive node request")
         self.server_registry[(ip, port)] = {"status": True}
-        self.client_to_server_registry[clients[0]] = clients[1]
-        for i, dictionary in enumerate(clients[1]):
-            self.client_registry[clients[1][i]] = {
-                                                        "status": True,
-                                                        "task_status": False
-                                                    }
+
+        self.client_to_server_registry[(ip, port)] = clients
+
+        # Assuming clients[1] is also a list of dictionaries or data to process
+        for client in clients:
+            self.client_registry[(client[0], client[1])] = {
+                "status": True,
+                "task_status": False
+            }
+
+
+        print(self.client_registry)
+
+
+
+        # print(ip)
+        # print("in receive node request")
+        # self.server_registry[(ip, port)] = {"status": True}
+        # self.client_to_server_registry[clients[0]] = clients[1]
+        # for i, dictionary in enumerate(clients[1]):
+        #     self.client_registry[clients[1][i]] = {
+        #                                                 "status": True,
+        #                                                 "task_status": False
+        #                                             }
+        # print(self.client_registry)
 
 
     # def start_workers(self):
@@ -81,27 +104,60 @@ class MasterNode:
     #             print(f"Error processing {config_file}: {e}")
     #         print("Finished initializing")
 
-    def start(self):
-        # print(f"Master node initializing on {self.ip}:{self.port}")
-        # self.start_workers()
-        def server_thread():
+    def server_thread(self):
+        """Server logic for MasterNode to bind, listen, and handle connections."""
+        print("in server thread")
+        try:
+            print("trying")
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reuse of address
+            print(f"Attempting to bind to {self.ip}:{self.port}")
             server_socket.bind((self.ip, self.port))
+            print(f"Successfully binded on {self.ip}:{self.port}")
             server_socket.listen(5)
             print(f"Master node listening on {self.ip}:{self.port}")
 
             while True:
                 conn, addr = server_socket.accept()
-                threading.Thread(target=self.handle_connection, args=(conn,), daemon=True).start()
-        print(self.ip)
-        print(self.port)
-        threading.Thread(target=server_thread, daemon=True).start()
-        print("Master node listening")
+                print(f"Connection received from {addr}")
+                thread = threading.Thread(target=self.server_thread)
+                thread.start()
+                print("MasterNode server thread started.", flush=True)
+                thread.join()  # Wait for the server thread to finish
+        except Exception as e:
+            print(f"Error starting server: {e}")
+
+    def start(self):
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.bind((self.ip, self.port))
+        server_socket.listen(5)
+        # self.notify_master(clients)
+        print(f"MasterNode listening on {self.ip}:{self.port}")
+        while True:  
+            print("Waiting for connection...")
+            conn, addr = server_socket.accept()
+            print(f"In server, Connected to {addr}")
+            try:
+                client_thread = threading.Thread(target=self.handle_connection, args=(conn,))
+                client_thread.start()
+                print(f"Started thread for connection: {addr}")
+            except Exception as e:
+                print(f"Error starting thread for {addr}: {e}")
+
+    def get_local_ip(self):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))  # Google DNS server
+                return s.getsockname()[0]
+        except Exception as e:
+            print(f"Error retrieving local IP: {e}")
+            return "127.0.0.1"  # Fallback to localhost
 
     def handle_connection(self, conn):
         """
         Handle incoming requests and route them through JSONRPCDispatcher.
         """
+        print("in handle connection")
         try:
             request = conn.recv(1024).decode('utf-8')
             print(f"MasterNode received request: {request}")
@@ -155,16 +211,20 @@ class MasterNode:
         response = {"jsonrpc": "2.0", "result": result, "id": 3} if result == "Success" else {"jsonrpc": "2.0", "error": result, "id": 3}
         conn.sendall(json.dumps(response).encode('utf-8'))
 
+    def store_data_location_client(self, file, client_address):
+        self.data_manager_proxy.store_data_location_client(file=file, client_address=client_address)
+
     def get_data_location(self, conn, data_key):
         result = self.data_manager_proxy.get_data_location(original_file_name=data_key)
         response = {"jsonrpc": "2.0", "result": result, "id": 3} if isinstance(result, list) else {"jsonrpc": "2.0", "error": result, "id": 3}
         conn.sendall(json.dumps(response).encode('utf-8'))
 
-    def send_job(self, job):
-        for file in job['files']:
-            self.data_manager_proxy.store_data_location(file, (job['client_ip'], job['client_port']))
-        self.job_manager_proxy.submit_job(job=job['tasks'])
+    def send_job(self, tasks, files, client_ip, client_port):
+        print("in send job")
+        for file in files:
+            self.data_manager_proxy.store_data_location_client(file=file, client_address=(client_ip, client_port))
+        self.job_manager_proxy.submit_job(tasks=tasks)
 
 if __name__ == "__main__":
     master_node = MasterNode()
-    # master_node.start()
+    master_node.start()

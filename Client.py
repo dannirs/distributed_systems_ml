@@ -7,6 +7,10 @@ import csv
 import socket
 import threading
 import json
+from JSONRPCProxy import JSONRPCProxy
+from jsonrpc import dispatcher, JSONRPCResponseManager
+from message import message
+import base64
 
 # 1. Set up the script to run configs in different directories
 # 2. Finish debugging Reduce phase 
@@ -46,18 +50,72 @@ import json
 # Tutorial for the user to use the program
 # when delivering, put everything in one package
 # can be later (dec. 17, etc.) 
+class FileService:
+    def __init__(self, server):
+        pass
+
+    @dispatcher.add_method
+    def retrieve_data(self, header_list=None):
+        payload_type = 2
+        key = header_list["key"]
+        destination_port = header_list["destination_port"]
+        source_port = header_list["source_port"]
+        if not key or not os.path.exists(key):
+            print(f"File '{key}' not found")
+            status = 404
+            print(f"'{key}' not found in cache.") 
+        else: 
+            status = 200
+
+        payload = ""
+        if status == 200: 
+            payload = key
+
+        packet = message( 
+            method="retrieve_data_resp", 
+            source_port=destination_port,
+            destination_port=source_port,
+            header_list={"key": key, "status": status, "payload_type": payload_type, "payload": payload}
+        )        
+        
+        response = packet.process_headers()
+        print(response)
+
+        if status == 200:
+            payloads = packet.process_payload()
+            print(payloads)
+            print("length of payload: ", len(payloads))
+            for payload in payloads:
+                try:
+                    decoded_payload = base64.b64decode(payload["payload"]).decode('utf-8')  # Decode base64
+                    json_payload = json.loads(decoded_payload)  # Parse JSON
+                    print("Decoded JSON payload:", json_payload)
+                    # response.update(json_payload)
+                except (base64.binascii.Error, json.JSONDecodeError) as e:
+                    print(f"Error decoding or parsing payload: {e}")
+                    continue
+        print("retrieve data response: ", response)
+        return response
 
 class Client:
-    def __init__(self, master_ip, master_port, job_files, client_ip="0.0.0.0", client_port=5001):
+    def __init__(self, master_ip, master_port, job_files, client_ip="localhost", client_port=2001):
         self.master_ip = master_ip
         self.master_port = master_port
         self.client_ip = client_ip
         self.client_port = client_port
         self.running = True
-        self.files = set()
-        self.server_thread = threading.Thread(target=self.start_server, daemon=True)
-        self.server_thread.start()
-        for job_file in job_files:
+        self.files = []
+        self.job_files = job_files
+        # self.server_thread = threading.Thread(target=self.start_server, daemon=True)
+        # self.server_thread.start()
+ 
+
+        # self.master = None
+        # self.config_files = config_files
+        # self.start_master()
+    
+    def process_job(self):
+        for job_file in self.job_files:
             job_file = job_file.strip()
             if os.path.exists(job_file):
                 self.handle_job_submission(job_file)
@@ -65,10 +123,6 @@ class Client:
                 print(f"Error: File '{job_file}' does not exist.")
         
 
-        # self.master = None
-        # self.config_files = config_files
-        # self.start_master()
-    
     # def start_master(self):
     #     for config_file in self.config_files:
     #         try:
@@ -130,7 +184,7 @@ class Client:
                     "payload": payload
                 }
                 tasks.append(task)
-                self.files.add(file_path)
+                self.files.append(file_path)
 
             # Handle retrieve_data
             elif method == "retrieve_data":
@@ -194,7 +248,7 @@ class Client:
                                         "payload": None
                                     })
                                     map_results.append(chunk_file_name)  # Add chunk name to map results
-                                    self.files.add(chunk_file_name)
+                                    self.files.append(chunk_file_name)
                                     # Reset chunk data
                                     chunk_rows = []
                                     chunk_size = 0
@@ -221,7 +275,7 @@ class Client:
                                     "payload": None
                                 })
                                 map_results.append(chunk_file_name)  # Add chunk name to map results
-                                self.files.add(chunk_file_name)
+                                self.files.append(chunk_file_name)
                     else:
                         # Single Map task for small files
                         tasks.append({
@@ -232,7 +286,7 @@ class Client:
                             "payload": None
                         })
                         map_results.append(file_path)  # Add original file name to map results
-                        self.files.add(file_path)
+                        self.files.append(file_path)
                 # Create Reduce task with populated map results
                 reduce_task = {
                     "job_id": job_id,
@@ -242,8 +296,8 @@ class Client:
                     "payload": None
                 }
                 tasks.append(reduce_task)
-                for res in map_results:
-                    self.files.add(res)
+                # for res in map_results:
+                #     self.files.append(res)
             else:
                 print(f"Unsupported method: {method}")
 
@@ -251,6 +305,7 @@ class Client:
 
     def send_file_chunks(self, data):
         """Send file chunks to the assigned worker."""
+        print("in send_file_chunks")
         worker_ip = data["worker_ip"]
         worker_port = data["worker_port"]
         file_chunks = data["file_chunks"]
@@ -464,13 +519,21 @@ class Client:
     #     self.master.send_job(job=tasks)
     def send_job(self, tasks):
         """Send a job to the MasterNode."""
+        print("in send job")
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.connect((self.master_ip, self.master_port))
-                job_data = {"tasks":tasks,
-                            "files":self.files,
-                            "client_ip":self.client_ip,
-                            "client_port":self.client_port}
+                job_data =                     {
+                    "jsonrpc": "2.0",
+                    "method": "master.send_job",
+                    "params": {
+                        "tasks":tasks,
+                        "files":self.files,
+                        "client_ip":"localhost",
+                        "client_port":self.client_port,
+                    },
+                    "id": random.randint(1, 10000)
+                }
                 s.sendall(json.dumps(job_data).encode('utf-8'))
                 print(f"Sent job to MasterNode at {self.master_ip}:{self.master_port}")
         except Exception as e:
@@ -479,20 +542,34 @@ class Client:
     def start_server(self):
         """Start a socket server to handle incoming requests."""
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind((self.client_ip, self.client_port))
-        server_socket.listen(5)
-        print(f"Client server started at {self.client_ip}:{self.client_port}")
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reusing the port
+        
+        # Print IP and port to verify
+        print(f"Binding server to IP: {self.client_ip}, Port: {self.client_port}")
+        
+        try:
+            server_socket.bind((self.client_ip, self.client_port))
+            server_socket.listen(5)
+            print(f"Client server started at {self.client_ip}:{self.client_port}")
+        except Exception as e:
+            print(f"Failed to bind server: {e}")
+            return
 
-        while self.running:
+        while True:
             try:
                 conn, addr = server_socket.accept()
                 print(f"Connection received from {addr}")
-                threading.Thread(target=self.handle_request, args=(conn, addr), daemon=True).start()
+                thread = threading.Thread(target=self.handle_request, args=(conn, addr), daemon=True)
+                thread.start()
             except Exception as e:
                 print(f"Error in server loop: {e}")
 
     def handle_request(self, conn, addr):
         """Handle incoming requests from other nodes."""
+        file_service = FileService(self)
+        dispatcher.update({
+                "retrieve_data": file_service.retrieve_data
+            })
         try:
             data = conn.recv(1024).decode('utf-8')
             if not data:
@@ -500,10 +577,14 @@ class Client:
                 return
 
             request = json.loads(data)
-            action = request.get("action")
+            action = request.get("method")
+            print("request from client: ", request)
 
-            if action == "request_file":
-                self.send_file(conn, request)
+            if action == "retrieve_data":
+                response = JSONRPCResponseManager.handle(json.dumps(request), dispatcher)
+                print(response)
+                print(response.json.encode('utf-8'))
+                conn.sendall(response.json.encode('utf-8'))
             else:
                 print(f"Unknown action '{action}' received from {addr}")
         except Exception as e:
@@ -513,7 +594,10 @@ class Client:
 
     def send_file(self, conn, request):
         """Send a requested file to the requesting node."""
-        file_name = request.get("file_name")
+        print("in send file")
+        file_name = ""
+        if "params" in request and "header_list" in request["params"] and "key" in request["params"]["header_list"]:
+            file_name = request["params"]["header_list"]["key"]
         if not file_name or not os.path.exists(file_name):
             print(f"File '{file_name}' not found")
             conn.sendall(json.dumps({"status": "error", "message": f"File '{file_name}' not found"}).encode('utf-8'))
@@ -532,14 +616,39 @@ class Client:
         self.running = False
         print("Stopping client server...")
 
-# if __name__ == '__main__':
-#     parser = argparse.ArgumentParser(description="UserClient Job Submission")
-#     parser.add_argument("--config_files", nargs="+", type=str, help="List of config files", required=True)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--master-ip", required=True, help="MasterNode IP Address")
+    parser.add_argument("--master-port", required=True, type=int, help="MasterNode Port")
+    parser.add_argument("--job-files", nargs="+", type=str, help="List of job files", required=True)
 
-#     args = parser.parse_args()
+    args = parser.parse_args()
+
+
+    client = Client(
+        master_ip=args.master_ip,
+        master_port=args.master_port, 
+        job_files = args.job_files
+    )
+    # client.start_server()
+    # client.process_job()
+    server_thread = threading.Thread(target=client.start_server, daemon=True)
+    server_thread.start()
+
+    # Run process_job in the main thread
+    client.process_job()
+
+    # Keep the main thread alive
+    server_thread.join()
+
+# if __name__ == '__main__':
+# #     parser = argparse.ArgumentParser(description="UserClient Job Submission")
+# #     parser.add_argument("--config_files", nargs="+", type=str, help="List of config files", required=True)
+
+# #     args = parser.parse_args()
 
 #     node = Client(args.config_files)
-#     node.run_interactive_mode()
+# #     node.run_interactive_mode()
 
 
 

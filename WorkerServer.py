@@ -1016,24 +1016,29 @@ class WorkerServer:
         print(self.master_ip)
         print(self.master_port)
 
-        MAX_RETRIES = 5
-        RETRY_DELAY = 2  # seconds
+        # MAX_RETRIES = 5
+        # RETRY_DELAY = 2  # seconds
 
-        for attempt in range(MAX_RETRIES):
-            try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.connect((self.master_ip, self.master_port))
-                    registration_data = {
-                        "ip": self.ip,
-                        "port": self.port, 
-                        "clients": clients
+        # for attempt in range(MAX_RETRIES):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((self.master_ip, self.master_port))
+                registration_data = {
+                        "jsonrpc": "2.0",
+                        "method": "master.receive_node_request",
+                        "params": {
+                            "ip": self.ip,
+                            "port": self.port, 
+                            "clients": clients[1]
+                        },
+                        "id": 2442
                     }
-                    s.sendall(json.dumps(registration_data).encode('utf-8'))
-                    print(f"Successfully notified MasterNode at {self.master_ip}:{self.master_port}")
-            except Exception as e:
-                print(f"Failed to notify MasterNode: {e}")
-        else:
-            print("Failed to connect to MasterNode after multiple attempts.")
+                s.sendall(json.dumps(registration_data).encode('utf-8'))
+                print(f"Successfully notified MasterNode at {self.master_ip}:{self.master_port}")
+        except Exception as e:
+            print(f"Failed to notify MasterNode: {e}")
+        # else:
+        #     print("Failed to connect to MasterNode after multiple attempts.")
 
 
     # def handle_client(self, conn):
