@@ -2,25 +2,25 @@
     {
         "is_master": false,
         "ip": "localhost",
-        "port": 5679,
+        "port": 5687,
         "role": "WorkerServer"
     },
     {
         "is_master": false,
         "ip": "localhost",
-        "port": 5680,
+        "port": 5688,
         "role": "WorkerClient"
     },
     {
         "is_master": false,
         "ip": "localhost",
-        "port": 5681,
+        "port": 5689,
         "role": "WorkerClient"
     },
     {
         "is_master": false,
         "ip": "localhost",
-        "port": 5682,
+        "port": 5690,
         "role": "WorkerClient"
     }
 ]
