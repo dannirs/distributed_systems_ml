@@ -293,11 +293,23 @@ class WorkerClient:
     def send_results_to_reduce_server(self, reduce_server_location, collected_map_results):
         print(f"Sending collected Map results to Reduce server at {reduce_server_location}")
         print(collected_map_results)
+        import base64
+
+        def is_base64(s):
+            try:
+                return base64.b64encode(base64.b64decode(s)).decode('utf-8') == s
+            except Exception:
+                return False
+
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((reduce_server_location[0], reduce_server_location[1]))
             for i, map_result in enumerate(collected_map_results):
+                # print("map_result: ", map_result)
                 is_last_packet = (i == len(collected_map_results) - 1)
-
+                    # Use payload as-is if already encoded; otherwise, encode it
+                # encoded_payload = map_result['payload']
+                # if not is_base64(encoded_payload):
+                #     encoded_payload = base64.b64encode(encoded_payload.encode('utf-8')).decode('utf-8')
                 task_data = {
                     "jsonrpc": "2.0",
                     "method": "reduce",  # Assuming the reduce server expects this method
@@ -306,13 +318,17 @@ class WorkerClient:
                             "key": map_result['key'],  # Use the key from the map result
                             "finished": is_last_packet  # Set to True if this is the last packet
                         },
-                        "payload": map_result['payload']  # Include the payload data
+                        "payload": map_result["payload"]  # Include the payload data
                     },
                     "id": random.randint(1, 10000)
                 }
-            
+                # if is_last_packet:
+                #     s.sendall((json.dumps(task_data)).encode('utf-8'))
             # Send the request using send_message for proper JSON-RPC formatting
-                self.send_message(s, task_data)
+                # print("Sending JSON:", json.dumps(task_data))
+                # else:
+                s.sendall((json.dumps(task_data) + "\n").encode('utf-8'))
+                # self.send_message(s, task_data)
 
     def test_multiple_clients(self):
         with open('test_input.json', 'r') as file:

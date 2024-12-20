@@ -214,7 +214,7 @@ class FileService:
     def combine_models(self, payload):
         combined_model = {"coefficients": [], "intercept": 0}
         total_data_points = 0
-
+        print("in combine_models")
         try:
             # Ensure payload is a valid JSON object
             if isinstance(payload, str):
@@ -250,12 +250,15 @@ class FileService:
         """
         Reduce Phase: Combine models from all map outputs.
         """
+        print("in reduce")
         try:            
             if isinstance(payload, str):
                 try:
                     # If results is a single string, decode it as JSON
                     payload = base64.b64decode(payload).decode('utf-8')
+                    print("first payload: ", payload)
                     payload = json.loads(payload)
+                    print("second payload: ", payload)
                 except json.JSONDecodeError as e:
                     print(f"Error decoding results: {e}")
                     return
@@ -419,34 +422,66 @@ class WorkerServer:
                     data = conn.recv(10240000).decode('utf-8')
                     if not data:
                         break
-                    buffer += data.replace('\n', '').replace('\r', '')
+                    print("data: ", data)
+                    # buffer += data.replace('\n', '').replace('\r', '')
+                    buffer += data
+                    print("buffer1: ", buffer)
                 except Exception as e:
                     print(f"Error receiving data: {e}")
                     break
 
-                # Split packets using "}{" as the delimiter
-                packets = buffer.split("}{")
-                if len(packets) > 1:
-                    # Re-add braces to make each JSON object valid
-                    packets = [
-                        f"{packet}}}" if i < len(packets) - 1 else packet
-                        for i, packet in enumerate(packets)
-                    ]
-                    buffer = packets.pop()  # Keep incomplete packet in the buffer
-                else:
-                    packets = [buffer]
-                    buffer = ""
+                if buffer.endswith("\n"):
+                    buffer += "\n"  # Ensure complete packets end with `\n`
 
-                # Process each complete packet
+                packets = buffer.split("\n")  # Split by `\n`
+                buffer = packets.pop()  # Keep the last segment in the buffer
+
                 for packet in packets:
+                    if not packet.strip():  # Skip empty packets
+                        continue
                     try:
+
+                # packets = buffer.split("\n")
+                # for packet in packets: 
+                #     if packet == "\n":
+                #         continue
+                #     try: 
+                #         packet = json.loads(packet)
+                #         print("packet can be processed")
+                #         print(packet)
+                #     except json.JSONDecodeError as e:
+                #         print("incomplete packet")
+                #         print(packet)
+
+                        
+                # # Split packets using "}{" as the delimiter
+                # packets = buffer.split("}{")
+                # if len(packets) > 1:
+                #     # Re-add braces to make each JSON object valid
+                #     packets = [
+                #         f"{packet}}}" if i < len(packets) - 1 else packet
+                #         for i, packet in enumerate(packets)
+                #     ]
+                #     buffer = packets.pop()  
+                #     print("new buffer: ", buffer) 
+                #     print("packets: ", packets) # Keep incomplete packet in the buffer
+                # else:
+                #     packets = [buffer]
+                #     buffer = ""
+
+                # # Process each complete packet
+                # for packet in packets:
+                #     try:
+                        # print("received on server side: ", packet)
                         packet = json.loads(packet)
+                        print("after loading as json: ", packet)
                         # Extract method from the packet
                         if method is None:
                             method = packet.get("method")
                         if method is not None and method == "reduce" and "header_list" not in packet["params"]:
                             payload_json = base64.b64decode(packet["params"]["payload"]).decode('utf-8')
                             payload = json.loads(payload_json)
+                            print("after loading as json2: ", packet)
 
                         # Handle `send_data` for special processing
                         if method == "send_data":
@@ -484,10 +519,13 @@ class WorkerServer:
                             if payload_hex:
                                 try:
                                     # Decode hex payload into JSON
+                                    print(packet)
                                     payload_bytes = base64.b64decode(payload_hex)
                                     payload_json = payload_bytes.decode('utf-8')
                                     payload = json.loads(payload_json)
+                                    print("after loading as json3: ", payload)
                                     collected_payloads.append((seq_num, payload))
+                                    print("collected_payloads: ", collected_payloads)
                                 except (ValueError, json.JSONDecodeError) as e:
                                     print(f"Error decoding payload: {e}")
 
@@ -502,7 +540,9 @@ class WorkerServer:
 
                     except json.JSONDecodeError as e:
                         print(f"JSON decoding error: {e}")
+                        print("error occurs here")
                         buffer += packet  # Re-add to buffer if incomplete
+                        print("buffer: ", buffer)
                         continue
 
             # Finalize and send aggregated payload
@@ -525,13 +565,14 @@ class WorkerServer:
                 conn.sendall(response.json.encode('utf-8'))
 
             if method in ["map", "reduce"] and headers and is_finished:
+                    print("next")
                     collected_payloads.sort(key=lambda x: x[0])
 
                     # Combine all decoded payloads into a single list
                     aggregated_payload = []
                     for _, payload in collected_payloads:
                         aggregated_payload.extend(payload)
-
+                    print("next2")
                     # Create the RPC request for the map method
                     rpc_request = {
                         "jsonrpc": "2.0",
@@ -545,6 +586,7 @@ class WorkerServer:
 
                     # Process the RPC request
                     response = JSONRPCResponseManager.handle(json.dumps(rpc_request), dispatcher)
+                    print("next3")
                     conn.sendall(response.json.encode('utf-8'))
 
         except Exception as e:

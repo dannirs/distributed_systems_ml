@@ -187,7 +187,7 @@ class Client:
                     },
                     "id": random.randint(1, 10000)
                 }
-                s.sendall(json.dumps(job_data).encode('utf-8'))
+                s.sendall((json.dumps(job_data) + "\n").encode('utf-8'))
                 print(f"Sent data location to MasterNode at {self.master_ip}:{self.master_port}")
         except Exception as e:
             print(f"Failed to send data location to MasterNode: {e}")
@@ -235,7 +235,7 @@ class Client:
                     },
                     "id": random.randint(1, 10000)
                 }
-                s.sendall(json.dumps(job_data).encode('utf-8'))
+                s.sendall((json.dumps(job_data)+"\n").encode('utf-8'))
                 print(f"Sent job to MasterNode at {self.master_ip}:{self.master_port}")
         except Exception as e:
             print(f"Failed to send job to MasterNode: {e}")
