@@ -308,7 +308,6 @@ class Client:
 
             request = json.loads(data)
             action = request.get("method")
-            print("request from client: ", request)
 
             if action == "retrieve_data":
                 self.retrieve_data(request["params"]["header_list"], conn)

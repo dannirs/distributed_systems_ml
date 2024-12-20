@@ -113,7 +113,6 @@ class message:
         if "key" not in self.header_list or not self.header_list["key"]:
             raise ValueError("Missing path to file")
         
-        print(self.header_list)
         file_path = self.header_list["key"]
         packets = []
         seq_num = 0

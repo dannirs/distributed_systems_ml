@@ -22,8 +22,6 @@ class JSONRPCDispatcher:
             params = req.get("params", {})
             req_id = req.get("id")
 
-            # print(f"Received JSON-RPC request: method={method}, params={params}, id={req_id}")
-
             if not method or method not in self.methods:
                 raise ValueError(f"Method '{method}' not found")
 
@@ -39,5 +37,4 @@ class JSONRPCDispatcher:
                 "error": {"code": -32603, "message": str(e)},
                 "id": req_id,
             }
-            print(response)
         return json.dumps(response)
