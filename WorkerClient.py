@@ -51,7 +51,7 @@ class WorkerClient:
                     }
 
         packet = json.dumps(request)
-        s.sendall(packet.encode('utf-8'))
+        s.sendall((packet + "\n").encode('utf-8'))
         time.sleep(1)  
         if request_params["method"] == "reduce": 
             packets = message.process_payload(msg)
@@ -64,7 +64,7 @@ class WorkerClient:
                     "params": packet,
                     "id": id
                 }
-                s.sendall(json.dumps(payload_request).encode('utf-8'))
+                s.sendall((json.dumps(payload_request)+"\n").encode('utf-8'))
         elif request["params"]["header_list"]["payload_type"] == 2:
             packets = message.process_payload(msg)
             for i, packet in enumerate(packets):
@@ -82,7 +82,7 @@ class WorkerClient:
                 }
                 try: 
                     serialized_packet = json.dumps(payload_request)
-                    s.sendall(serialized_packet.encode('utf-8'))
+                    s.sendall((serialized_packet+"\n").encode('utf-8'))
                 except Exception as e:
                     print(f"Error serializing payload packet: {e}")
                     return
@@ -135,7 +135,7 @@ class WorkerClient:
                 "params": {"original_file_name": key},
                 "id": 2
             }
-            json_request = json.dumps(request).encode('utf-8')
+            json_request = (json.dumps(request)+"\n").encode('utf-8')
             print(f"DEBUG: Is socket open? {s.fileno() != -1}")
             s.sendall(json_request)
             response = s.recv(1024).decode('utf-8')
@@ -286,7 +286,7 @@ class WorkerClient:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((self.master_ip, self.master_port))
             request = {"jsonrpc": "2.0", "method": "data.get_data_location", "params": {"original_file_name": original_file_name}, "id": 1}
-            s.sendall(json.dumps(request).encode('utf-8'))
+            s.sendall((json.dumps(request)+"\n").encode('utf-8'))
             response = json.loads(s.recv(4096).decode('utf-8'))
             return response.get("result", [])
 
@@ -316,7 +316,8 @@ class WorkerClient:
                     "params": {
                         "header_list": {
                             "key": map_result['key'],  # Use the key from the map result
-                            "finished": is_last_packet  # Set to True if this is the last packet
+                            "finished": is_last_packet,
+                            "seq_num": i  # Set to True if this is the last packet
                         },
                         "payload": map_result["payload"]  # Include the payload data
                     },

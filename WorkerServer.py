@@ -509,12 +509,46 @@ class WorkerServer:
                         
                         # Collect payloads
                         if method in ["map", "reduce"]:
-                            if headers is None:
-                                headers = packet.get("params", {}).get("header_list", {})
+                            params = packet.get("params", {})
 
-                            payload_hex = packet["params"].get("payload")
-                            seq_num = packet["params"].get("seq_num")
-                            finished = packet["params"].get("finished", False)
+                            # Initialize variables
+                            payload_hex = None
+                            seq_num = None
+                            finished = False
+
+                            # Check if "header_list" exists in params
+                            if "header_list" in params:
+                                header_list = params.get("header_list", {})
+                                payload_hex = header_list.get("payload", params.get("payload"))  # Fallback to params
+                                seq_num = header_list.get("seq_num", params.get("seq_num"))  # Fallback to params
+                                finished = header_list.get("finished", params.get("finished", False))  # Fallback to params
+
+                                # If headers is None, set it to header_list
+                                if headers is None:
+                                    headers = header_list
+                            else:
+                                # Fallback to params if "header_list" is not present
+                                payload_hex = params.get("payload")
+                                seq_num = params.get("seq_num")
+                                finished = params.get("finished", False)
+
+                                    
+                            # else: 
+
+                            # params = packet.get("params", {})
+                            # header_list = params.get("header_list", {})
+
+                            # if headers is None:
+                            #     # Initialize headers and related fields from `header_list`
+                            #     headers = header_list
+                            # payload_hex = header_list.get("payload", None)
+                            # seq_num = header_list.get("seq_num", None)
+                            # finished = header_list.get("finished", False)
+
+                            # # Update fields only if values exist in `params`
+                            # payload_hex = params.get("payload", payload_hex)
+                            # seq_num = params.get("seq_num", seq_num)
+                            # finished = params.get("finished", finished)
 
                             if payload_hex:
                                 try:
@@ -530,6 +564,7 @@ class WorkerServer:
                                     print(f"Error decoding payload: {e}")
 
                             if finished:
+                                print("is finished")
                                 is_finished = True
                                 break
 

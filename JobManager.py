@@ -54,7 +54,7 @@ class JobManager:
                     },
                     "id": random.randint(1, 40000)
                 }
-                sock.sendall(json.dumps(message).encode("utf-8"))
+                sock.sendall((json.dumps(message)+"\n").encode("utf-8"))
                 print(f"Task {task['task_id']} sent to {client_address} via {server_ip}:{server_port}")
                 self.tasks_pending_results[task["task_id"]] = task
                 self.task_queue.pop(0)
