@@ -50,7 +50,7 @@ class Client:
     def create_tasks(self, job_data):
         tasks = []
         job_id = random.randint(1, 40000)
-        max_chunk_size = 2520 * 1024  # Chunk size in bytes (10 KB)
+        max_chunk_size = 2520 * 1024 
 
         for dictionary in job_data:
             method = dictionary.get("method")
@@ -342,5 +342,4 @@ if __name__ == "__main__":
     # Run process_job in the main thread
     client.process_job()
 
-    # Keep the main thread alive
     server_thread.join()

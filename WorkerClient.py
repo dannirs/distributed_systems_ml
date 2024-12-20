@@ -109,7 +109,8 @@ class WorkerClient:
     def send_heartbeat(self):
         while self.active:
             try:
-                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.connect((self.master_ip, self.master_port))
                     heartbeat_data = json.dumps({
                         "jsonrpc": "2.0",
                         "method": "master.receive_heartbeat",
@@ -119,8 +120,8 @@ class WorkerClient:
                         },
                         "id": 1
                     })
-                    udp_socket.sendto(heartbeat_data.encode('utf-8'), (self.master_ip, self.master_port))
-                    print(f"Heartbeat sent via UDP from {self.ip}:{self.port}")
+                    s.sendall(heartbeat_data.encode('utf-8'))
+                    print(f"Heartbeat sent from {self.ip}:{self.port}")
             except Exception as e:
                 print(f"Failed to send heartbeat via UDP: {e}")
 
