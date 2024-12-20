@@ -1,247 +1,152 @@
-# distributed_systems_ml
+# HOW TO RUN THE DISTRIBUTED SYSTEM FOR A MAPREDUCE/LINEAR REGRESSION JOB
 
-Client: 
--main(): calls test
--test(): contains various input parameters (this is already in a dict), calls send_request
--send_request(): calls prepare_message and send_message
--get_payload(): if the message has a payload, create it here and attach it to the parameters
--send_message(): passes the message to the rpc. waits for a response and checks the ack flag to see if the response succeeded; checks the action_required flag to see if further action is needed (write_to_file)
--write_to_file(): called if the response requires the client to write a file to storage
--method name is both separate and in the header list
+Terminology: 
+Client 
+    1 Client instance will be created during program execution. The Client instance is located in the source directory. The Client is responsible for receiving jobs and extracting tasks to pass on to the MasterNode, chunking any large files included in the tasks as needed
+MasterNode 
+    1 MasterNode instance will be created during program execution, and the instance will run in one of the directories that the user creates (MasterNode directory). MasterNode is responsible for keeping tracking of WorkerServer and WorkerClient instances and passing on requests related to data retrieval and job handling
+Worker 
+    Each Worker instance will run in a separate directory that the user creates (Worker directory). The Worker class contains 1 WorkerServer instance and 1-5 WorkerClient instances. Multiple Worker instances can be created. Worker is responsible for initializing WorkerServer and WorkerClients
+WorkerServer 
+    1 WorkerServer instance will run in each Worker directory, and it will be initialized by the Worker. WorkerServer is a server that executes tasks when a request is received from a WorkerClient
+WorkerClient 
+    1-5 WorkerClient instances will run in each Worker directory, and each instance will be initialized by the Worker when it receives a task from JobManager. The WorkerClient communicates by default with the WorkerServer instance located in the same directory, although WorkerClients can also communicate with other WorkerServers, or with MasterNode or Client, depending on the task requirements
 
-RPC:
--call(): Uses the client's socket address to create a connection to the server. Parses the method, headers, and payload from the dictionary and creates a Message object. checks the method and, depending on the method, may do additional processing to get more headers (ex. file size).  If there is a problem with the message, it returns an error to the client and closes the connection. Calls send()
--send(): sends the request to the server and waits for a response. passes the response to the client? 
--if the request did not succeed, does the client call the rpc again and the connection is closed and reopened?
--sends headers and  payload separately, using 2 sends?
+1. Open the program files in an IDE 
 
-Message:
--does error handling to make sure all parameters are included in the header
--headers are stored in a dictionary 
--payload is separate from the headers
+2. Create new folders outside of the source directory (for example, 4 new folders). During program execution, the source directory will contain the Client instance, 1 of the new folders will contain the MasterNode instance, and the remaining folders will contain the Worker instances. Each Worker instance contains the following: 1 server and multiple clients. 
+The overall structure should look something like this: 
++ Source directory 
++ MasterNode directory
++ Worker directory
++ Worker directory
++ Worker directory
 
-Server: 
--start_server(): connection is initiated
--handle_client(): checks the method to decide which sub-function to call
--file_upload(): stores file. sends ack response
--file_retrieve(): retrieves file from dict. sends file back in payload to the rpc
--value_upload(): stores value. sends ack response
--value_retrieve(): retrieves value from dict. sends value back in payload to the rpc
+3. Copy all program files into each of the new directories
 
+4. In each new directory, create a file called config.json. This file will be used to configure the role, IP, and port of each MasterNode, WorkerServer, and WorkerClient instance. Select a directory to contain the MasterNode instance; there should only be 1 MasterNode during program execution. In the corresponding config file, input the following, replacing <unique_port> with a port number of your choosing (i.e. "port": 5679): 
+[
+    {
+        "is_master": true,
+        "ip": "localhost",
+        "port": <unique_port>
+    }
+]
 
-TODO:
--Finish fixing up current code and test that everything works
--Start adding node classes (general node class, masternode, integrate with client and server classes, config files) 
+The overall structure should now look something like this:
++ Source directory - contains all program files
++ MasterNode directory - contains all program files and a config.json that defines the MasterNode
++ Worker directory - contains all program files and a config.json that defines the WorkerServer and WorkerClients
++ Worker directory - contains all program files and a config.json that defines the WorkerServer and WorkerClients
++ Worker directory - contains all program files and a config.json that defines the WorkerServer and WorkerClients
 
-Node:
--Uses config to initialize each node and start up client/server
--Iterate through config to initialize each node, starting with MasterNode (or just initialize MasterNode?)
-MasterNode:
--Listen for heartbeats from workers to check that they're active 
--Track what the workers and roles are 
--Receive packets from workers about where data is stored and save it in a directory
--Receive requests searching for data and return a response with where the data is stored
--Use config to initialize each node and store it 
--Initialize JobManager
--Initialize a TaskManager for each WorkerClient
-WorkerServer:
--Send heartbeats to MasterNode 
--Request for sending data and retrieving data location from MasterNode
-WorkerClient:
--Send heartbeats to MasterNode 
--Request for retrieving data location from MasterNode
--Only data on the server-side is stored
-JobManager:
--Is a part of MasterNode
--Has a queue of jobs 
--Has a dictionary of active tasks and their statuses
--Send task to worker
--Receive task update from worker
-TaskManager:
--Is a part of WorkerNode
--Notifies the MasterNode if the worker is currently busy 
--Receive and execute tasks by calling the command on the workernode
--Report when the task is complete
+5. In the Worker directories, input the following to configure 1 WorkerServer and multiple WorkerClients (up to 5), replacing <unique_port> with a port number of your choosing (i.e. "port": 5679):
+[
+    {
+        "is_master": false,
+        "ip": "localhost",
+        "port": <unique_port>,
+        "role": "WorkerServer"
+    },
+    {
+        "is_master": false,
+        "ip": "localhost",
+        "port": <unique_port>,
+        "role": "WorkerClient"
+    },
+    {
+        "is_master": false,
+        "ip": "localhost",
+        "port": <unique_port>,
+        "role": "WorkerClient"
+    },
+    {
+        "is_master": false,
+        "ip": "localhost",
+        "port": <unique_port>,
+        "role": "WorkerClient"
+    }
+]
 
-MapReduce:
-UserClient
--Initiates an RPC call to the MasterNode with MapReduce instructions
--Mapreduce instruction can be used with many files at once
+Each WorkerServer and WorkerClient must have a unique port address across directories
 
-MasterNode
--Decomposes data into chunks 
--Selects a node to be the reduce node
--Sends map tasks to worker clients
--Collects results from client
--Reduce node is either sent the results by each client node, or it retrieves the results itself
+6. Navigate back to the source directory. Open the "run.sh" file and make the following changes to the file: 
+- In line 5, replace the paths with the absolute paths to your newly created Worker directories
+- In line 17, replace the path with the absolute path to your newly created MasterNode directory
 
-DataManager
--Execute map phase and reduce phase for data chunks 
--Saves results to file
+7. Open the "job.json" file in the source directory. This file is used to submit job instructions to the system. Each item in the job file will be processed as a task. The following job methods are accepted: 
 
-JobManager
+[
+    {
+        "method": "mapreduce",
+        "header_list": {
+            "keys": [<name_of_file>, <name_of_file>] 
+            <!-- Ex. "keys": ["nba_game_logs_2022_23.csv", "nba_game_logs_2023_24.csv"] -->
+        },
+        "payload": ""
+    },
+    {
+        "method": "send_data",
+        "header_list": {
+            "key": <name_of_file>
+            <!-- Ex. "key": "username.csv" -->
+        },
+        "payload": ""
+    },
+    {
+        "method": "send_data",
+        "header_list": {
+            "key": <key_for_single_value>
+            <!-- Ex. "key": "revenue" -->
+        },
+        "payload": <value_for_single_value>
+        <!-- Ex. "payload": 8300 -->
+        <!-- The value can be of any data type (i.e. string, integer, decimal) -->
+    },
+    {
+        "method": "retrieve_data",
+        "header_list": {
+            "key": <key_for_single_value>
+            <!-- Ex. "key": "revenue" -->
+        },
+        "payload": ""
+    },
+    {
+        "method": "retrieve_data",
+        "header_list": {
+            "key": <name_of_file>
+            <!-- Ex. "key": "username.csv" -->
+        },
+        "payload": ""
+    }
+]
 
-TaskManager
+The job file can handle multiple tasks, with each task running in parallel. Please note that, because tasks are designed to run in parallel within a job file, each task should not have any dependencies on another task. If you need to run tasks with dependences, create a new job file (i.e. job2.json) and input these tasks here. When running the program, ensure that job2.json is listed after job.json
 
-WorkerNode
+8. After creating your job file(s), open "run.sh" again and update line 12 with the absolute paths to your job files
 
-WorkerServer
+9. This program uses the following librares: 
+nba-api==1.5.2
+json-rpc==1.15.0
+numpy==1.24.4
+Install these requirements into your system.
 
-WorkerClient
+10. The mapreduce task is designed to work with NBA game logs from the official NBA website. To retrieve these, you must generate the datasets using the nba_api API. Open the "get_stats.py" file. This is used to generate the datasets. In line 6, input a value for "season_nullable" to download the dataset for that season. The seasons that I used while testing were: 2022-23, 2023-24, and 2024-25. Download each of these datasets by running "get_stats.py". The datasets should now appear in your source directory. 
 
-Steps:
-1. Add a new request type for mapreduce
-2. When the userclient sees this task, it iterates through the files. For all files that are too big, it chunks these files and creates a new separate task. The instruction should include the associated task and sequence #, as well as total size? When chunking the file, a new file is created for each chunk
-3. JobManager sees that a mapreduce task has been received. Jobmanager will randomly select a client for the reduce task
-4. JobManager sends tasks to clients; each task contains 1 chunk
-5. Clients run the map phase, which involves aggregating 
+11. Run "run.sh" by opening Git Bash and entering: "./run.sh". Program execution will now begin.
 
-Map phase:
--Convert categorical variables into ordinal encodings
--Calculate averages for player stats 
--Create new derived features like points per minute and rebounds per minute
--Summarize team-level stats for each chunk (sum of points, rebounds, etc.)
+12. After program execution finishes, view the logs in the console to see job results. Navigate to each directory to view any files that were outputted during the job. For example, when running a mapreduce task, the following files will be generated: 
+-Preprocess files that contain the features used in the Map phase
+-Map files that contain the results of model training for each individual file/file chunk
+-1 combined_model file that contains the final model training results, which aggregate the model training result of each file/file chunk
 
-Reduce phase:
--Aggregate new data and compute final averages
+Sample directory with generated mapreduce output:
+![alt text](image-2.png)
 
--team, position: list of players
--player:
-    -salary
-    -points (average per minute)
-    -rebounds (average per minute)
-    -assists (average per minute)
-    -turnovers (average per minute)
-    -minutes played (average per game)
-    -games played (total)
-    -free throw percentage (overall average)
-    -field goal percentage (overall average)
-    -three-point percentage (overall average)
-    -injury status
+13. For the mapreduce task, the combined_model contains the coefficients and intercept of the final trained model. To view predictions derived using this model, you can use the "test_map_reduce.py" program. Set the testing_csv_file to one of the NBA datasets. Input the final trained model into combined_model. Then, run "test_map_reduce.py". The program will use the selected NBA dataset as a test dataset, first removing any columns related to Fantasy Points. In the console, the prediction results will be printed, including the name of the player, actual fantasy points, predicted fantasy points, and the difference between actual and predicted. The output will also display some metrics for the model's accuracy.
 
-map:
--For two columns, calculate the total and count, and then use this to calculate the average (ex. point per minute). Create a new column to put this data in
--For one column, calculate the total and count, and then calculate the overall average
--For one column, calculate the total sum
--Convert categorical variables into ordinal encodings
--Extract the team-player position and the name of the player
--If a value is missing, do not count it?
+Sample output of combined_model:
+![alt text](image.png)
 
-reduce:
--Generate player key-value aggregations, where each player has their total stats (for example, calculate total averages)
--Generate team-position aggregations, where each team-position key is paired with a list of the players in that team
-
-Data:
-Dataset 1 (season)
--Player name
--Team
--Position (G, F, C)
--Avg minutes 
--Avg points per min
--Avg rebounds per min
--Avg assists per min
--Avg steals per min
--Avg blocks per min
--Avg double-double per min
--Avg triple-double per min
--Avg 3PM per min
--Avg fantasy points per min
-
-Dataset 2 (per game)
--Player name
--Team
--Position
--Opponent
--Injured (ignore)
--Home_away
--Total minutes
--Total points per min
--Total rebounds per min
--Total assists per min
--Total steals per min
--Total blocks per min
--Total double-double per min
--Total triple-double per min
--Total 3PM per min
--Total fantasy points per min
--Total games 
-
-PLAYER_NAME
-TEAM_ABBREVIATION
-MATCHUP 
-MIN
-REB
-AST
-TOV
-STL
-BLK
-PTS
-NBA_FANTASY_PTS
-
-
-# in the script, create multiple copies of all program files and move them in the config folders
-# files should be saved in that folder
-
-# check linear regression calculations 
-
-# improve output
-
-# script:
-Python folder
-Node program folder -- node1, node2, ...
-Copy current node folder into image
-1. node directories and job files
-2. get the config files from the directories
-3. pass to UserClient which initializes MasterNode; remove MasterNode initialization, move to script
-4. MasterNode initializes each WorkerServer/WorkerClient, move to script
-
-Deployment
-1. Package the system for the image
-2. Run the image
-3. 1 image can be for master, 1 image for a worker node; can run the master and worker images, can run multiple worker images
-4. 1 image for master node runs in 1 container, 1 image for worker node (run multiple in different containers with different exposed port) 
-1 node --> 1 exposed port # --> 1 server, 3 clients (still keep internal port #s) 
-
-(WorkerNode needs exposed port # of the MasterNode)
-
-UserClient handles job, script is started at the same time
-file1 (local) --> file1_part1 (local), part2 (local), part3
-worker1 --> part1, worker2, worker3 
-send_file() from local server to each worker (jobmanager can process)
-and then store in their local
-
-
-ClientScript send the files to each node
-
-JobManager --> randomly selects worker, sends task
-UserClient --> splits jobs into tasks (retrieve_file, map, reduce)
-
-
-
-Script starts MasterNode in container, given exposed port # --> script
-UserClient passes job to MasterNode
-Script starts WorkerNodes, passes them MasterNode's port --> script
-WorkerNodes report to MasterNode, Masternode stores them in registry --> Python
-
-
-
-Workers to get masternode port --> script,
-
-
-5. 
-
-Master --> starts Workers, master passes port
-
-
-1. Script starts WorkerServer/WorkerClient, and MasterNode
-2. DataScript:
-    -Split files into data chunks
-    -Send chunk to workernode
-    -Notify masternode
-    
-UserClient - splits files into chunks --> rename as Client
-JobMaster - sends chunk to WorkerNode
-DataManager - notifies MasterNode
-
-2. JobScript --> SendFile on each chunk, 
-
+Sample output of predictions using combined_model:
+![alt text](image-1.png)
