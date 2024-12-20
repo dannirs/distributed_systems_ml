@@ -1,17 +1,10 @@
 [
     {
-        "method": "send_data",
+        "method": "mapreduce",
         "header_list": {
-            "key": "username.csv"
+            "keys": ["nba_game_logs_2022_23.csv", "nba_game_logs_2023_24.csv"]
         },
         "payload": ""
-    }, 
-    {
-        "method": "send_data",
-        "header_list": {
-            "key": "key1"
-        },
-        "payload": "value1"
     }
 ]
 

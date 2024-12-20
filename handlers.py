@@ -37,10 +37,7 @@ def log_data_summary(data, label="Data"):
         print(f"{label} Summary: List with {len(data)} elements")
         if len(data) > 0:
             print(f" - First element type: {type(data[0])}")
-            if isinstance(data[0], dict):
-                print(f" - First element keys: {list(data[0].keys())}")
     elif isinstance(data, dict):
         print(f"{label} Summary: Dictionary with {len(data)} keys")
-        print(f" - Keys: {list(data.keys())}")
     else:
         print(f"{label} Summary: {type(data).__name__}")

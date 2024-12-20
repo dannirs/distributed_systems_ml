@@ -29,32 +29,24 @@ class Worker:
                 self.ip = config[i]["ip"]
                 self.port = config[i]["port"]
                 break
-        # self.ip = server_ip
-        # self.port = server_port
-        print(self.ip)
-        print(self.port)
         self.master_ip = master_ip
         self.master_port = master_port
         self.clients = {}
         self.server = WorkerServer(self.master_ip, self.master_port, self.ip, self.port, self)
-        # self.start()
-        print("config: ", config)
         for i, dictionary in enumerate(config):
             if config[i]["role"] == "WorkerClient":
                 ip = config[i]["ip"]
                 port = config[i]["port"]
                 client = WorkerClient(self.master_ip, self.master_port, self.ip, self.port, ip, port)
                 self.clients[(ip, port)] = client
-        print("self.clients: ", self.clients)
     
     def get_clients(self):
         return ((self.ip, self.port), list(self.clients.keys()))
 
     def start(self):
         if self.server:
-            print("Starting server")
+            print("Starting Worker node\n")
             self.server.start_server(self.get_clients())
-        print("Complete")
         return
 
     def check_available_clients(self):
@@ -78,11 +70,7 @@ if __name__ == "__main__":
     parser.add_argument('--config', required=True, help="Path to configuration file")
     
     args = parser.parse_args()
-
-    # notify_master_node(args.master_ip, args.master_port)
     config = load_config(args.config)
-    # config = load_config()
-    # args = parse_args()
 
     worker = Worker(
         master_ip=args.master_ip,

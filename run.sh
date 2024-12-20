@@ -9,10 +9,8 @@ CONFIG_DIRS=(
 
 # Define job files to execute
 JOB_FILES=(
-    "C:/Users/Danni/distributed_systems_ml/job3.json"
+    "C:/Users/Danni/distributed_systems_ml/job.json"
 )
-
-which python
 
 # Step 1: Start the MasterNode and print output directly to the terminal
 echo "Starting MasterNode..."
@@ -28,8 +26,6 @@ if [ ! -f "$MASTER_OUTPUT_FILE" ]; then
     exit 1
 fi
 
-echo "MasterNode output is being written to: $MASTER_OUTPUT_FILE"
-
 # Extract MasterNode IP and Port
 MASTER_IP="localhost"
 MASTER_PORT=$(grep -oP 'Port: \K\d+' "$MASTER_OUTPUT_FILE")
@@ -39,10 +35,7 @@ if [ -z "$MASTER_PORT" ]; then
     exit 1
 fi
 
-echo "MasterNode started at IP: $MASTER_IP, Port: $MASTER_PORT"
-
 # Verify MasterNode startup with a simple connectivity check
-echo "Checking if MasterNode is listening..."
 python - <<EOF
 import socket, sys
 MASTER_IP = "$MASTER_IP"

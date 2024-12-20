@@ -7,7 +7,6 @@ from JSONRPCDispatcher import JSONRPCDispatcher
 class TaskManager:
     def __init__(self, client):
         self.current_task = None  
-        self.running = True  
         self.client = client
         self.dispatcher = JSONRPCDispatcher()
         
@@ -16,7 +15,6 @@ class TaskManager:
         self.dispatcher.register_method("task.send_task_update", self.send_task_update)
 
     def task_complete(self, task_status, task_data):
-        print("in task complete")
         response = json.dumps({
             "jsonrpc": "2.0",
             "method": "job.get_task_response",
@@ -34,8 +32,6 @@ class TaskManager:
 
     def process_task(self, task):
         self.current_task = task
-        task_id = task["params"]["task_id"]
-        print(f"Received task {task_id}")
         task_thread = threading.Thread(target=self.send_task_update, daemon=True)
         task_thread.start()
 
@@ -67,7 +63,4 @@ class TaskManager:
         """
         response = self.dispatcher.handle_request(request)
         return response
-
-    def stop(self):
-        self.running = False
 
