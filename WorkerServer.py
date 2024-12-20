@@ -489,24 +489,6 @@ class WorkerServer:
                                 seq_num = params.get("seq_num")
                                 finished = params.get("finished", False)
 
-                                    
-                            # else: 
-
-                            # params = packet.get("params", {})
-                            # header_list = params.get("header_list", {})
-
-                            # if headers is None:
-                            #     # Initialize headers and related fields from `header_list`
-                            #     headers = header_list
-                            # payload_hex = header_list.get("payload", None)
-                            # seq_num = header_list.get("seq_num", None)
-                            # finished = header_list.get("finished", False)
-
-                            # # Update fields only if values exist in `params`
-                            # payload_hex = params.get("payload", payload_hex)
-                            # seq_num = params.get("seq_num", seq_num)
-                            # finished = params.get("finished", finished)
-
                             if payload_hex:
                                 try:
                                     # Decode hex payload into JSON
