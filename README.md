@@ -71,8 +71,10 @@ The overall structure should now look something like this:
 Each WorkerServer and WorkerClient must have a unique port address across directories
 
 6. Navigate back to the source directory. Open the "run.sh" file and make the following changes to the file: 
-- In line 5, replace the paths with the absolute paths to your newly created Worker directories
-- In line 17, replace the path with the absolute path to your newly created MasterNode directory
+- In line 5, replace the paths with the absolute paths to your Worker directories
+- In line 17, replace the path with the absolute path to your MasterNode directory, using: <absolute_path_to_dir>/master_output.log
+- In line 18, replace the path with the absolute path to your MasterNode directory, using:
+(cd <absolute_path_to_dir> && python -u MasterNode.py | tee "$MASTER_OUTPUT_FILE" 2>&1 &)
 
 7. Open the "job.json" file in the source directory. This file is used to submit job instructions to the system. Each item in the job file will be processed as a task. The following job methods are accepted: 
 
