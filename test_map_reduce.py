@@ -1,26 +1,19 @@
 import csv
 import os
 import json
-
+import numpy as np
 
 class LinearRegressionModel:
-    """
-    Wrapper class to represent the combined linear regression model.
-    """
     def __init__(self, combined_model):
         self.coefficients = combined_model["coefficients"]
         self.intercept = combined_model["intercept"]
 
     def predict(self, X):
-        """
-        Predict using the linear regression model.
-        """
         predictions = [
             self.intercept + sum(x[i] * self.coefficients[i] for i in range(len(x)))
             for x in X
         ]
-        return [max(0, pred) for pred in predictions]  # Clamp predictions to zero minimum
-
+        return [max(0, pred) for pred in predictions]  # predictions is a minimum value of 0
 
 class LinearRegression:
     def __init__(self):
@@ -179,69 +172,7 @@ def process_chunk(file_path, is_training=True):
         print(f"Error processing chunk: {e}")
         return None, None, None, None
 
-
-
-
-def normalize_features(X):
-    """
-    Normalize statistical features to have zero mean and unit variance.
-    """
-    import numpy as np
-    print("Input to normalize_features:", X[:3])  # Print sample input
-
-    X_array = np.array(X, dtype=float)
-    print("Converted to array, shape:", X_array.shape)
-
-    means = np.mean(X_array, axis=0)
-    stds = np.std(X_array, axis=0)
-
-    # Avoid division by zero for constant features
-    stds[stds == 0] = 1
-    X_normalized = (X_array - means) / stds
-    print("Normalized array, shape:", X_normalized.shape)
-    return X_normalized, means, stds
-
-
-
-def preprocess_data(file_path, team_encoding):
-    data = []
-    targets = []  
-
-    with open(file_path, 'r', encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            try:
-                team = team_encoding.get(row["TEAM_ABBREVIATION"], 0)
-                opponent = team_encoding.get(row["MATCHUP"][-3:], 0)
-
-                stats = {k: float(row[k]) for k in ["MIN", "REB", "AST", "TOV", "STL", "BLK", "PTS"]}
-                per_minute_stats = {f"{k}_PER_MIN": v / stats["MIN"] if stats["MIN"] > 0 else 0 for k, v in stats.items()}
-
-                features = {
-                    "REB_PER_MIN": per_minute_stats["REB_PER_MIN"],
-                    "AST_PER_MIN": per_minute_stats["AST_PER_MIN"],
-                    "STL_PER_MIN": per_minute_stats["STL_PER_MIN"],
-                    "BLK_PER_MIN": per_minute_stats["BLK_PER_MIN"],
-                    "PTS_PER_MIN": per_minute_stats["PTS_PER_MIN"],
-                    "TEAM": team,
-                    "OPPONENT": opponent
-                }
-                data.append(list(features.values()))
-
-                if "NBA_FANTASY_PTS" in row:
-                    targets.append(float(row["NBA_FANTASY_PTS"]))
-
-            except Exception as e:
-                print(f"Error processing row: {e}")
-                continue
-
-    return data, targets
-
 def debug_feature_variance(X, y):
-    """
-    Print the mean and standard deviation of each feature and the target.
-    """
-    import numpy as np
     means = [np.mean(col) for col in zip(*X)]
     stds = [np.std(col) for col in zip(*X)]
     print("Feature Means:", means)
@@ -249,8 +180,6 @@ def debug_feature_variance(X, y):
     print("Target Mean:", np.mean(y))
     print("Target Std Deviation:", np.std(y))
 
-# check the algorithm
-# try without splitting; see if the result is the same
 def combine_models(map_outputs):
     combined_model = {"coefficients": [], "intercept": 0}
     total_data_points = 0
@@ -271,9 +200,6 @@ def combine_models(map_outputs):
     return combined_model
 
 def evaluate_model(model, X_test, y_test):
-    """
-    Evaluate the model's performance on the test dataset.
-    """
     print("\nEvaluating the model...")
 
     y_pred = model.predict(X_test)
@@ -298,9 +224,6 @@ def evaluate_model(model, X_test, y_test):
     return mse, rmse, r2
 
 def evaluate_model_with_names(model, X_test, y_test, player_names):
-    """
-    Evaluate the model's performance on the test dataset and show player names.
-    """
     print("\nEvaluating the model...")
 
     y_pred = model.predict(X_test)

@@ -232,7 +232,7 @@ class WorkerClient:
         map_result_files = task_data["params"]["header_list"]["map_results"]  # List of files to process
         reduce_server_location = (self.default_server_ip, self.default_server_port)  # Reduce server location
 
-        # Step 1: Retrieve map result locations from DataManager (via MasterNode)
+        # Retrieve map result locations from DataManager (via MasterNode)
         map_result_locations = []
         for map_result_file in map_result_files:
             player_result_path = f"map_output_{os.path.basename(map_result_file)}.json"
@@ -241,11 +241,11 @@ class WorkerClient:
 
         print(f"Map result locations: {map_result_locations}")
 
-        # Step 2: Collect map results from the retrieved locations
+        # Collect map results from the retrieved locations
         collected_map_results = self.collect_map_results(map_result_locations)
         print(f"Collected Map results: {len(collected_map_results)} files")
 
-        # Step 3: Send the collected Map results to the Reduce WorkerServer
+        # Send the collected Map results to the Reduce WorkerServer
         self.send_results_to_reduce_server(reduce_server_location, collected_map_results)
         print("Reduce task has been successfully executed.")
 
@@ -270,7 +270,7 @@ class WorkerClient:
 
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.connect((location[0], location[1]))
-                self.send_message(s, task_data)  # Ensure consistent JSON-RPC call
+                self.send_message(s, task_data) 
                 response = s.recv(102400).decode('utf-8')
                 response_data = json.loads(response)
                 if "result" in response_data and response_data["result"]:
@@ -297,14 +297,14 @@ class WorkerClient:
                 is_last_packet = (i == len(collected_map_results) - 1)
                 task_data = {
                     "jsonrpc": "2.0",
-                    "method": "reduce",  # Assuming the reduce server expects this method
+                    "method": "reduce",  
                     "params": {
                         "header_list": {
-                            "key": map_result['key'],  # Use the key from the map result
+                            "key": map_result['key'],  
                             "finished": is_last_packet,
                             "seq_num": i  # Set to True if this is the last packet
                         },
-                        "payload": map_result["payload"]  # Include the payload data
+                        "payload": map_result["payload"]  
                     },
                     "id": random.randint(1, 10000)
                 }

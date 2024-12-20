@@ -4,15 +4,9 @@ import json
 
 class JSONRPCDispatcher:
     def __init__(self):
-        """Initialize the dispatcher with an empty registry for methods."""
         self.methods = {}
 
     def register_method(self, name, func):
-        """
-        Register a method with the dispatcher.
-        :param name: The name of the method (as a string) to be used in JSON-RPC requests.
-        :param func: The callable function or method to invoke when this name is called.
-        """
         self.methods[name] = func
 
     def handle_request(self, request):

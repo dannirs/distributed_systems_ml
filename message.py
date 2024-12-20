@@ -30,9 +30,6 @@ class message:
             raise ValueError(f"Unsupported method: {self.method}")
 
     def req_preprocess_map(self):
-        """
-        Preprocess headers for Map tasks.
-        """
         if "key" not in self.header_list or not self.header_list["key"]:
             raise ValueError("Missing chunked file parameter for map task")
 
@@ -40,9 +37,6 @@ class message:
         return self.header_list
 
     def req_preprocess_reduce(self):
-        """
-        Preprocess headers for Reduce tasks.
-        """
         if "key" not in self.header_list:
             raise ValueError("Missing or invalid map results parameter for reduce task")
 
@@ -107,9 +101,6 @@ class message:
 
 
     def process_payload(self):
-        """
-        Process payload for file-based operations, splitting into chunks for transmission.
-        """
         if "key" not in self.header_list or not self.header_list["key"]:
             raise ValueError("Missing path to file")
         
@@ -119,10 +110,9 @@ class message:
         batch_size = 5000
         if self.check_file_type(file_path) == "json":
             with open(file_path, 'r') as file:
-                json_data = json.load(file)  # Load entire JSON file
+                json_data = json.load(file)  
                 if isinstance(json_data, dict):
-                    # If the JSON is a dictionary, decide how to handle it
-                    raise ValueError("Is not a list.")  # Adjust "data" as needed based on your structure
+                    raise ValueError("Is not a list.")  
                 elif not isinstance(json_data, list):
                     raise ValueError("JSON file does not contain a list or processable data.")
 
@@ -130,7 +120,7 @@ class message:
             for i in range(0, len(json_data), batch_size):
                 batch = json_data[i:i + batch_size]  # Create a batch of items
                 payload = json.dumps(batch).encode('utf-8')
-                payload=base64.b64encode(payload).decode('utf-8')  # Serialize and encode
+                payload=base64.b64encode(payload).decode('utf-8')  
 
                 packet = {
                     "seq_num": seq_num,
@@ -156,21 +146,17 @@ class message:
 
             # Batch the data
             for i in range(0, len(csv_data), batch_size):
-                batch = csv_data[i:i + batch_size]  # Create a batch of items
+                batch = csv_data[i:i + batch_size] 
                 
-                # Serialize the batch as JSON but DO NOT HEX ENCODE here
-                payload = json.dumps(batch, ensure_ascii=False)  # Create JSON string
-
-                # Verify payload is valid JSON
+                payload = json.dumps(batch, ensure_ascii=False) 
                 try:
-                    payload_json = json.loads(payload)  # Parse it back to ensure validity
+                    payload_json = json.loads(payload)  
                 except json.JSONDecodeError as e:
                     print("Invalid JSON in message: ", e)
                     continue
-                # Create the packet
-                payload_bytes = payload.encode('utf-8')  # Encode JSON string to bytes
-                payload_hex = payload_bytes  # Convert bytes to hex string
-                payload_hex = base64.b64encode(payload_bytes).decode('utf-8')  # Encode bytes to Base64 string
+                payload_bytes = payload.encode('utf-8')  
+                payload_hex = payload_bytes  
+                payload_hex = base64.b64encode(payload_bytes).decode('utf-8')  
 
                 packet = {
                     "seq_num": seq_num,
@@ -196,7 +182,7 @@ class message:
                     packet = {
                         "seq_num": seq_num,
                         "finished": False,
-                        "payload": base64.b64encode(file_data).decode('utf-8')  # Convert to hex for transport
+                        "payload": base64.b64encode(file_data).decode('utf-8')  
                     }
                     packets.append(packet)
                     seq_num += 1

@@ -8,7 +8,6 @@ import threading
 import json
 from message import message
 import base64
-from handlers import log_data_summary
 
 class Client:
     def __init__(self, master_ip, master_port, job_files, client_ip="localhost", client_port=2001):
@@ -40,9 +39,6 @@ class Client:
             print(f"Error processing job file {job_file}: {e}")
 
     def handle_command_line_job(self, tasks):
-        """
-        Process a job provided directly via command-line arguments.
-        """
         tasks = self.create_tasks(tasks)
         print("Job received from command-line arguments and tasks created.")
         self.send_job(tasks)
@@ -274,11 +270,9 @@ class Client:
         return         
 
     def start_server(self):
-        """Start a socket server to handle incoming requests."""
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reusing the port
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  
         
-        # Print IP and port to verify
         print(f"Binding server to IP: {self.client_ip}, Port: {self.client_port}\n")
         
         try:
@@ -299,7 +293,6 @@ class Client:
                 print(f"Error in server loop: {e}")
 
     def handle_request(self, conn, addr):
-        """Handle incoming requests from other nodes."""
         try:
             data = conn.recv(1024).decode('utf-8')
             if not data:
@@ -318,10 +311,6 @@ class Client:
         finally:
             conn.close()
 
-    def stop_server(self):
-        """Stop the server."""
-        print("Stopping client server...")
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--master-ip", required=True, help="MasterNode IP Address")
@@ -339,7 +328,6 @@ if __name__ == "__main__":
     server_thread = threading.Thread(target=client.start_server, daemon=True)
     server_thread.start()
 
-    # Run process_job in the main thread
     client.process_job()
 
     server_thread.join()

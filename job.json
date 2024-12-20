@@ -2,7 +2,7 @@
     {
         "method": "mapreduce",
         "header_list": {
-            "keys": ["nba_game_logs_2022_23.csv", "nba_game_logs_2023_24.csv"]
+            "keys": ["nba_game_logs_2022_23.csv", "nba_game_logs_2023_24.csv", "nba_game_logs_2024_25.csv"]
         },
         "payload": ""
     }

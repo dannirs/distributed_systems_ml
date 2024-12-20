@@ -1,7 +1,7 @@
 from nba_api.stats.endpoints import playergamelogs
 import pandas as pd
 
-# Fetch game logs for the entire league (replace the season_nullable field)
+# Fetch game logs for the league (replace the season_nullable field)
 player_logs = playergamelogs.PlayerGameLogs(
     season_nullable='2024-25',
     season_type_nullable='Regular Season'

@@ -35,7 +35,6 @@ class DataManager:
                     return "Success"
             self.data_registry[original_file_name].append((chunked_file_name, client_address, file_type))
         elif chunked_file_name and file_type in ["map_output", "reduce_output"]:
-            # Directly add map/reduce outputs without ordering
             self.data_registry[original_file_name].append((chunked_file_name, client_address, file_type))
         else:
             self.data_registry[original_file_name].append((original_file_name, client_address, file_type))

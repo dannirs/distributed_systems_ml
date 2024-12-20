@@ -58,9 +58,6 @@ class TaskManager:
 
 
     def handle_request(self, request):
-        """
-        Handle incoming JSON-RPC requests via the dispatcher.
-        """
         response = self.dispatcher.handle_request(request)
         return response
 

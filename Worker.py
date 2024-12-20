@@ -6,10 +6,6 @@ import os
 import socket
 
 def load_config(config_path=None):
-    """
-    Load the configuration file.
-    If config_path is not provided, default to 'config.json' in the script directory.
-    """
     if not config_path:
         config_path = os.path.join(os.path.dirname(__file__), "config.json")
     

@@ -60,9 +60,6 @@ class FileService:
             return {"status": "failure", "error": str(e)}
 
     def process_chunk(self, header_list, data_chunk):
-        """
-        Preprocess data, train the model, and save intermediate results.
-        """
         team_encoding = {"ATL": 1, "BOS": 2, "CHA": 3, "CHI": 4, "CLE": 5, "DAL": 6, "DEN": 7, "DET": 8,
                         "GSW": 9, "HOU": 10, "IND": 11, "LAC": 12, "LAL": 13, "MEM": 14, "MIA": 15, "MIL": 16,
                         "MIN": 17, "NOP": 18, "NYK": 19, "BKN": 20, "OKC": 21, "ORL": 22, "PHI": 23, "PHO": 24,
@@ -81,7 +78,6 @@ class FileService:
             
         if isinstance(data_chunk, str):
             try:
-                # Attempt to encode and decode as UTF-8
                 data_chunk.encode('utf-8').decode('utf-8')
             except (UnicodeEncodeError, UnicodeDecodeError):
                 print("Payload is not in utf-8 format.")
@@ -95,7 +91,6 @@ class FileService:
                 print(f"Error decoding results: {e}")
                 return
 
-        # Ensure results is now a list
         if not isinstance(data_chunk, list):
             raise ValueError(f"Expected a list for results, got {type(data_chunk)}")
         try:
@@ -246,13 +241,9 @@ class FileService:
 
     @dispatcher.add_method
     def reduce(self, header_list=None, payload=None):
-        """
-        Reduce Phase: Combine models from all map outputs.
-        """
         try:            
             if isinstance(payload, str):
                 try:
-                    # If results is a single string, decode it as JSON
                     payload = base64.b64decode(payload).decode('utf-8')
                     payload = json.loads(payload)
                 except json.JSONDecodeError as e:
@@ -441,7 +432,6 @@ class WorkerServer:
                             payload_json = base64.b64decode(packet["params"]["payload"]).decode('utf-8')
                             payload = json.loads(payload_json)
 
-                        # Handle `send_data` for special processing
                         if method == "send_data":
                             if "header_list" in packet["params"]:
                                 payload_type = packet["params"]["header_list"]["payload_type"]
@@ -476,22 +466,19 @@ class WorkerServer:
                             # Check if "header_list" exists in params
                             if "header_list" in params:
                                 header_list = params.get("header_list", {})
-                                payload_hex = header_list.get("payload", params.get("payload"))  # Fallback to params
-                                seq_num = header_list.get("seq_num", params.get("seq_num"))  # Fallback to params
-                                finished = header_list.get("finished", params.get("finished", False))  # Fallback to params
+                                payload_hex = header_list.get("payload", params.get("payload")) 
+                                seq_num = header_list.get("seq_num", params.get("seq_num"))  
+                                finished = header_list.get("finished", params.get("finished", False))  
 
-                                # If headers is None, set it to header_list
                                 if headers is None:
                                     headers = header_list
                             else:
-                                # Fallback to params if "header_list" is not present
                                 payload_hex = params.get("payload")
                                 seq_num = params.get("seq_num")
                                 finished = params.get("finished", False)
 
                             if payload_hex:
                                 try:
-                                    # Decode hex payload into JSON
                                     payload_bytes = base64.b64decode(payload_hex)
                                     payload_json = payload_bytes.decode('utf-8')
                                     payload = json.loads(payload_json)
@@ -506,7 +493,7 @@ class WorkerServer:
                         elif method in ["retrieve_data", "send_data_location", "send_task_to_client"]:
                             response = JSONRPCResponseManager.handle(json.dumps(packet), dispatcher)
                             conn.sendall(response.json.encode('utf-8'))
-                            return  # Exit after handling single-packet method
+                            return  
 
                     except json.JSONDecodeError as e:
                         print(f"JSON decoding error: {e}")

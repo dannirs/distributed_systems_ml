@@ -12,12 +12,11 @@ JOB_FILES=(
     "C:/Users/Danni/distributed_systems_ml/job.json"
 )
 
-# Step 1: Start the MasterNode and print output directly to the terminal
+# Start the MasterNode 
 echo "Starting MasterNode..."
-MASTER_OUTPUT_FILE="/c/Users/Danni/Config4/master_output.log"  # Temporary file for MasterNode output
+MASTER_OUTPUT_FILE="/c/Users/Danni/Config4/master_output.log"  # file for MasterNode output
 (cd /c/Users/Danni/Config4 && python -u MasterNode.py | tee "$MASTER_OUTPUT_FILE" 2>&1 &)
 
-# Wait for the file to be created
 sleep 2
 
 # Check if the file exists
@@ -35,7 +34,7 @@ if [ -z "$MASTER_PORT" ]; then
     exit 1
 fi
 
-# Verify MasterNode startup with a simple connectivity check
+# Verify MasterNode is listening
 python - <<EOF
 import socket, sys
 MASTER_IP = "$MASTER_IP"
@@ -54,7 +53,6 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Define a function to test server connectivity
 test_server_connection() {
     local server_ip=$1
     local server_port=$2
@@ -79,9 +77,9 @@ EOF
     fi
 }
 
-# Step 2: Start WorkerServers with MasterNode's IP and Port
+# Start WorkerServers with MasterNode's IP and Port
 for DIR in "${CONFIG_DIRS[@]}"; do
-    CONFIG_FILE="$DIR/config.json"  # Explicitly reference config.json in each directory
+    CONFIG_FILE="$DIR/config.json"  
 
     if [ ! -f "$CONFIG_FILE" ]; then
         echo "No config.json found in directory: $DIR. Skipping."
@@ -90,14 +88,13 @@ for DIR in "${CONFIG_DIRS[@]}"; do
 
     echo "Starting WorkerServer with configuration: $CONFIG_FILE in directory: $DIR with MasterNode at $MASTER_IP:$MASTER_PORT"
 
-    # Run WorkerServer and explicitly pass the config file
     (cd "$DIR" && python -u Worker.py \
         --master-ip "$MASTER_IP" \
         --master-port "$MASTER_PORT" \
         --config "$CONFIG_FILE" 2>&1) &
 done
 
-# Step 3: Start UserClient with MasterNode details and job files
+# Start UserClient with MasterNode details and job files
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 echo "Starting Client..."
 python -u "$SCRIPT_DIR/Client.py" \
@@ -106,6 +103,6 @@ python -u "$SCRIPT_DIR/Client.py" \
     --job-files "${JOB_FILES[@]}"
 
 CLIENT_IP="localhost"
-CLIENT_PORT=2001  # Replace with your actual client port if different
+CLIENT_PORT=2001  
 test_server_connection "$CLIENT_IP" "$CLIENT_PORT"
 echo "Ran job"

@@ -18,7 +18,6 @@ class JobManager:
         other_tasks = [task for task in tasks if task["method"] not in ["map", "reduce"]]
         # Add tasks to the queue
         self.task_queue.extend(map_tasks + other_tasks)
-        # Store the Reduce task(s) for later execution
         self.reduce_task = reduce_tasks[0] if reduce_tasks else None
         # Assign tasks to available clients
         self.assign_tasks()
@@ -27,11 +26,8 @@ class JobManager:
     def get_available_clients(self, server_address):
         available_clients = []
 
-        # Safely access clients for the given server
         clients = self.master.client_to_server_registry.get(server_address, [])
-
-        # Iterate over the client list
-        for client in clients:  # Each client is a list like ['localhost', 5684]
+        for client in clients:  
             client_info = self.master.client_registry.get((client[0], client[1]), {})
             if client_info.get("status") and not client_info.get("task_status"):
                 available_clients.append((client[0], client[1]))

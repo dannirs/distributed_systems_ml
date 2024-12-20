@@ -22,7 +22,6 @@ class MasterNode:
         self.data_manager = DataManager()
         self.dispatcher = JSONRPCDispatcher()
 
-        # Register methods in dispatcher
         self.dispatcher.register_method("job.submit_job", self.job_manager.submit_job)
         self.dispatcher.register_method("job.get_task_response", self.job_manager.get_task_response)
         self.dispatcher.register_method("job.get_available_clients", self.job_manager.get_available_clients)
@@ -39,17 +38,11 @@ class MasterNode:
         self.job_manager_proxy = JSONRPCProxy(self.dispatcher, prefix="job")
         self.data_manager_proxy = JSONRPCProxy(self.dispatcher, prefix="data")
 
-    def get_available_port(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(("", 0))  # Bind to any available port
-            return s.getsockname()[1]  # Return the port number
-
     def receive_node_request(self, ip, port, clients):
         self.server_registry[(ip, port)] = {"status": True}
 
         self.client_to_server_registry[(ip, port)] = clients
 
-        # Assuming clients[1] is also a list of dictionaries or data to process
         for client in clients:
             self.client_registry[(client[0], client[1])] = {
                 "status": True,
